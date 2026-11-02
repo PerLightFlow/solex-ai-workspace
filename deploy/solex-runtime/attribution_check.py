@@ -1,7 +1,20 @@
 """File attribution and shared-reader acceptance on disposable resources only."""
 import secrets
+from datetime import datetime
 
 from api_client import Client, ApiError
+
+
+def same_timestamp(left, right):
+    """Compare instants, not UTC/Asia-Shanghai RFC3339 representations."""
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    try:
+        first = datetime.fromisoformat(left.replace('Z', '+00:00'))
+        second = datetime.fromisoformat(right.replace('Z', '+00:00'))
+        return first.tzinfo is not None and second.tzinfo is not None and first == second
+    except ValueError:
+        return False
 
 
 def denied(client, method, path, body=None):
@@ -17,12 +30,16 @@ def denied(client, method, path, body=None):
 def check_document_attribution(admin, owner, identity, owner_id, tenant_id, kb_id, initial):
     document_id = initial['id']
     path = '/knowledge/' + document_id
-    keys = ('created_by', 'created_by_name', 'last_modified_by', 'last_modified_by_name', 'last_modified_at')
+    keys = ('created_by', 'created_by_name', 'last_modified_by', 'last_modified_by_name')
     if initial.get('created_by') != owner_id or initial.get('created_by_name') != identity['username']:
         raise RuntimeError('Upload attribution is missing or incorrect')
     after_parse = owner.call('GET', path)['data']
-    if any(after_parse.get(key) != initial.get(key) for key in keys):
-        raise RuntimeError('Background parsing changed user attribution')
+    changed_fields = [key for key in keys if after_parse.get(key) != initial.get(key)]
+    for key in ('created_at', 'last_modified_at'):
+        if not same_timestamp(after_parse.get(key), initial.get(key)):
+            changed_fields.append(key)
+    if changed_fields:
+        raise RuntimeError('Background parsing changed user attribution: ' + ','.join(changed_fields))
 
     people, org_id, share_id = [], None, None
     try:
@@ -51,7 +68,7 @@ def check_document_attribution(admin, owner, identity, owner_id, tenant_id, kb_i
             raise RuntimeError('An edit changed the original uploader')
         if changed.get('last_modified_by') != editor_user['id'] or changed.get('last_modified_by_name') != editor_state['username']:
             raise RuntimeError('The second user was not recorded as the last editor')
-        if not changed.get('last_modified_at') or changed['last_modified_at'] in (initial.get('last_modified_at'), '2000-01-01T00:00:00Z'):
+        if not changed.get('last_modified_at') or same_timestamp(changed['last_modified_at'], initial.get('last_modified_at')) or same_timestamp(changed['last_modified_at'], '2000-01-01T00:00:00Z'):
             raise RuntimeError('Human modification time is missing or client-controlled')
 
         org = owner.call('POST', '/organizations', {'name': '__attribution_acceptance__'})['data']

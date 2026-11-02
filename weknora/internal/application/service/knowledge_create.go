@@ -125,11 +125,7 @@ func (s *knowledgeService) createKnowledgeFromFile(ctx context.Context,
 	}
 	if exists {
 		logger.Infof(ctx, "File already exists: %s", fileName)
-		// Update creation time for existing knowledge
-		if err := s.repo.UpdateKnowledgeColumn(ctx, existingKnowledge.ID, "created_at", time.Now()); err != nil {
-			logger.Errorf(ctx, "Failed to update existing knowledge: %v", err)
-			return nil, err
-		}
+		// A rejected duplicate must preserve the original upload time and author.
 		return existingKnowledge, types.NewDuplicateFileError(existingKnowledge)
 	}
 
@@ -390,13 +386,7 @@ func (s *knowledgeService) createKnowledgeFromURL(ctx context.Context,
 	}
 	if exists {
 		logger.Infof(ctx, "URL already exists: %s", url)
-		// Update creation time for existing knowledge
-		existingKnowledge.CreatedAt = time.Now()
-		existingKnowledge.UpdatedAt = time.Now()
-		if err := s.repo.UpdateKnowledge(ctx, existingKnowledge); err != nil {
-			logger.Errorf(ctx, "Failed to update existing knowledge: %v", err)
-			return nil, err
-		}
+		// A rejected duplicate is not a new upload or a user edit.
 		return existingKnowledge, types.NewDuplicateURLError(existingKnowledge)
 	}
 

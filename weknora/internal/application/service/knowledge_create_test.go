@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -18,6 +19,7 @@ import (
 type createKnowledgeFileRepoStub struct {
 	interfaces.KnowledgeRepository
 
+	existing         *types.Knowledge
 	createCalls      int
 	createErr        error
 	createdKnowledge *types.Knowledge
@@ -29,7 +31,7 @@ func (r *createKnowledgeFileRepoStub) CheckKnowledgeExists(
 	kbID string,
 	params *types.KnowledgeCheckParams,
 ) (bool, *types.Knowledge, error) {
-	return false, nil, nil
+	return r.existing != nil, r.existing, nil
 }
 
 func (r *createKnowledgeFileRepoStub) CreateKnowledge(ctx context.Context, knowledge *types.Knowledge) error {
@@ -371,4 +373,20 @@ func newMultipartFileHeader(t *testing.T, filename string, content string) *mult
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	require.NoError(t, req.ParseMultipartForm(1024))
 	return req.MultipartForm.File["file"][0]
+}
+
+func TestDuplicateFilePreservesOriginalUploadTimeAndAuthor(t *testing.T) {
+	original := time.Date(2026, 10, 30, 1, 2, 3, 0, time.UTC)
+	existing := &types.Knowledge{ID: "existing", TenantID: 7, KnowledgeBaseID: "kb-1", CreatedAt: original, CreatedBy: "original-author"}
+	repo := &createKnowledgeFileRepoStub{existing: existing}
+	files := &createKnowledgeFileServiceStub{}
+	svc := &knowledgeService{repo: repo, kbService: &createKnowledgeFileKBServiceStub{kb: &types.KnowledgeBase{ID: "kb-1"}}, fileSvc: files}
+	got, err := svc.CreateKnowledgeFromFile(newCreateKnowledgeFileContext(), "kb-1", newMultipartFileHeader(t, "doc.txt", "hello"), nil, nil, "", nil, "", nil)
+	var duplicate *types.DuplicateKnowledgeError
+	require.ErrorAs(t, err, &duplicate)
+	require.Same(t, existing, got)
+	require.Equal(t, original, got.CreatedAt)
+	require.Equal(t, "original-author", got.CreatedBy)
+	require.Zero(t, repo.createCalls)
+	require.Zero(t, files.saveCalls)
 }
