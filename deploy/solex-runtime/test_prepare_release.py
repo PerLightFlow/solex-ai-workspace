@@ -59,6 +59,13 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('FROM ' + release.APP_RUNTIME + '\n', dockerfile)
         self.assertIn('COPY WeKnora /app/WeKnora\n', dockerfile)
         self.assertIn('COPY migrations/ /app/migrations/\n', dockerfile)
+        self.assertIn('COPY config/ /app/config/\n', dockerfile)
+        expected_config = [release.CONFIG / 'builtin_agents.yaml',
+                           *sorted((release.CONFIG / 'prompt_templates').glob('*.yaml'))]
+        for path in expected_config:
+            self.assertEqual(path.read_bytes(),
+                             (self.output / 'app/config' / path.relative_to(release.CONFIG)).read_bytes())
+        self.assertFalse((self.output / 'app/config/config.yaml').exists())
         for dialect in ('versioned', 'sqlite'):
             expected = {p.name: p.read_bytes() for p in (release.MIGRATIONS / dialect).glob('*.sql')}
             packaged = {p.name: p.read_bytes() for p in (self.output / 'app/migrations' / dialect).glob('*.sql')}

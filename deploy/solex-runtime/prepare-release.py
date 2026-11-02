@@ -14,6 +14,13 @@ from urllib.parse import urlsplit, unquote
 SOURCE = Path(__file__).resolve().parent
 UI_SOURCE = SOURCE.parent / 'solex-ui'
 MIGRATIONS = SOURCE.parent.parent / 'weknora' / 'migrations'
+CONFIG = SOURCE.parent.parent / 'weknora' / 'config'
+PROMPT_FILES = (
+    'system_prompt.yaml', 'context_template.yaml', 'rewrite.yaml', 'fallback.yaml',
+    'generate_session_title.yaml', 'generate_summary.yaml', 'generate_kb_description.yaml',
+    'keywords_extraction.yaml', 'agent_system_prompt.yaml', 'graph_extraction.yaml',
+    'generate_questions.yaml', 'intent_prompts.yaml',
+)
 APP_RUNTIME = 'wechatopenai/weknora-app@sha256:25b20959b7456f7842ef55ed4feff3694dbd0c6f8af4117c1fb3c5dec6bdf14d'
 UI_RUNTIME = 'wechatopenai/weknora-ui@sha256:df26705d866997db07f3da78dabedc4f594b383566a3996810c166a5c6bee393'
 SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py')
@@ -125,6 +132,10 @@ def prepare(backend_dir, dist, destination, revision):
     dist_hash = validate_dist(dist)
     for name in SCRIPTS: plain_file(SOURCE / name)
     for name in ('Dockerfile', '50x.html', '.dockerignore'): plain_file(UI_SOURCE / name)
+    # Ship public prompt definitions with the source, not the upstream image's
+    # defaults. Deliberately exclude config.yaml and local model/secret files.
+    config_files = [plain_file(CONFIG / 'builtin_agents.yaml')]
+    config_files += [plain_file(CONFIG / 'prompt_templates' / name) for name in PROMPT_FILES]
     migration_files = []
     for dialect in ('versioned', 'sqlite'):
         scripts = sorted((MIGRATIONS / dialect).glob('*.sql'))
@@ -169,14 +180,19 @@ def prepare(backend_dir, dist, destination, revision):
         target = app / 'migrations' / script.relative_to(MIGRATIONS)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(script, target)
-    (app / '.dockerignore').write_text('*\n!Dockerfile\n!WeKnora\n!migrations/\n!migrations/**\n')
+    for path in config_files:
+        target = app / 'config' / path.relative_to(CONFIG)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+    (app / '.dockerignore').write_text('*\n!Dockerfile\n!WeKnora\n!migrations/\n!migrations/**\n!config/\n!config/**\n')
     (app / 'Dockerfile').write_text(
         'FROM ' + APP_RUNTIME + '\nARG RELEASE_ID\nARG SOURCE_REVISION\n'
         'LABEL org.opencontainers.image.title="SOLEX" \\\n'
         '      org.opencontainers.image.revision="${SOURCE_REVISION}" \\\n'
         '      io.solex.runtime.release="${RELEASE_ID}"\n'
         'COPY WeKnora /app/WeKnora\n'
-        'COPY migrations/ /app/migrations/\n')
+        'COPY migrations/ /app/migrations/\n'
+        'COPY config/ /app/config/\n')
     for name in ('Dockerfile', '50x.html', '.dockerignore'): shutil.copy2(UI_SOURCE / name, ui / name)
     shutil.copytree(dist, ui / 'dist')
     (destination / 'release.json').write_text(json.dumps(metadata, indent=2) + '\n')
