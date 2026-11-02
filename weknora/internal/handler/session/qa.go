@@ -276,6 +276,9 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 	if request.AgentSourceTenantID != 0 && customAgent == nil {
 		return nil, nil, errors.NewNotFoundError("Shared agent not found")
 	}
+	if request.AgentID != "" && customAgent == nil {
+		return nil, nil, errors.NewNotFoundError("Agent is no longer available; select another agent")
+	}
 
 	// Merge @mentioned items into knowledge_base_ids and knowledge_ids
 	kbIDs, knowledgeIDs := mergeKnowledgeTargets(request.KnowledgeBaseIDs, request.KnowledgeIDs, request.MentionedItems)
@@ -654,6 +657,12 @@ func (h *Handler) resolveAgent(
 	if agentID == "" {
 		return nil, 0, false
 	}
+	// System agents execute in the caller's workspace. A removed system ID
+	// must never be resurrected through an old organization share.
+	systemAgent := types.ManagedRuntimeEnabled() && types.IsSystemBuiltinAgentID(agentID)
+	if systemAgent && sourceTenantID != 0 {
+		return nil, 0, false
+	}
 
 	logger.Infof(ctx, "Resolving agent, agent ID: %s", secutils.SanitizeForLog(agentID))
 
@@ -673,6 +682,10 @@ func (h *Handler) resolveAgent(
 		}
 		ownErr = err
 	}
+	if systemAgent {
+		logger.Warnf(ctx, "System agent is unavailable: %s", secutils.SanitizeForLog(agentID))
+		return nil, 0, false
+	}
 
 	var shareErr error
 	userIDVal, _ := c.Get(types.UserIDContextKey.String())
@@ -689,8 +702,8 @@ func (h *Handler) resolveAgent(
 		shareErr = err
 	}
 
-	logger.Warnf(ctx, "Failed to get agent, agent ID: %s, source tenant: %d, own error: %v, share error: %v, "+
-		"using default config", secutils.SanitizeForLog(agentID), sourceTenantID, ownErr, shareErr)
+	logger.Warnf(ctx, "Failed to get agent, agent ID: %s, source tenant: %d, own error: %v, share error: %v",
+		secutils.SanitizeForLog(agentID), sourceTenantID, ownErr, shareErr)
 	return nil, 0, false
 }
 
@@ -1052,12 +1065,19 @@ func (h *Handler) KnowledgeQA(c *gin.Context) {
 		return
 	}
 
-	// Execute normal mode QA, generate title unless disabled
-	if request.LocalBrowserEnabled {
+	// An open client may still use this endpoint after an administrator
+	// changes a global agent's mode. Honor the current catalog definition.
+	mode := qaModeNormal
+	if types.ManagedRuntimeEnabled() && reqCtx.customAgent != nil &&
+		reqCtx.customAgent.IsBuiltin && types.IsSystemBuiltinAgentID(reqCtx.customAgent.ID) &&
+		reqCtx.customAgent.IsAgentMode() {
+		mode = qaModeAgent
+	}
+	if request.LocalBrowserEnabled && mode != qaModeAgent {
 		_ = c.Error(errors.NewBadRequestError("Local browser requests must use the agent endpoint"))
 		return
 	}
-	h.executeQA(reqCtx, qaModeNormal, !request.DisableTitle)
+	h.executeQA(reqCtx, mode, !request.DisableTitle)
 }
 
 // AgentQA godoc

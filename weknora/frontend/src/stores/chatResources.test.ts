@@ -84,3 +84,17 @@ test('ignores unknown areas', async t => {
   assert.equal(api.listKnowledgeBases.mock.callCount(), 0)
   assert.equal(api.listModels.mock.callCount(), 0)
 })
+
+
+test('forced directory refresh removes deleted globals and excludes internal workflows', async t => {
+  const { store, api } = setup(t)
+  api.listAgents.mock.mockImplementation(async () => ({ data: [
+    { id: 'builtin-global', is_builtin: true, name: 'Old' },
+    { id: 'builtin-internal', is_builtin: true, is_internal: true },
+  ] }))
+  await store.ensureAgents(true)
+  assert.deepEqual(store.agents.map((item: any) => item.id), ['builtin-global'])
+  api.listAgents.mock.mockImplementation(async () => ({ data: [{ id: 'private' }] }))
+  await store.ensureAgents(true)
+  assert.deepEqual(store.agents.map((item: any) => item.id), ['private'])
+})

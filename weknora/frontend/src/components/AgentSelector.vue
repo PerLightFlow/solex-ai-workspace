@@ -17,12 +17,12 @@
             <div v-for="agent in builtinAgents" :key="agent.id" class="agent-option"
               :class="{ selected: isMyAgentSelected(agent) }" @mouseenter="onOptionEnter(agent, $event)"
               @mouseleave="onOptionLeave" @click="selectAgent(agent)">
-              <div v-if="agent.id === BUILTIN_QUICK_ANSWER_ID || agent.id === BUILTIN_SMART_REASONING_ID"
+              <div v-if="agent.avatar" class="builtin-avatar">{{ agent.avatar }}</div>
+              <div v-else-if="agent.id === BUILTIN_QUICK_ANSWER_ID || agent.id === BUILTIN_SMART_REASONING_ID"
                 class="builtin-icon" :class="agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal'">
                 <TIcon :name="agent.config?.agent_mode === 'smart-reasoning' ? 'control-platform' : 'chat'"
                   size="13px" />
               </div>
-              <div v-else-if="agent.avatar" class="builtin-avatar">{{ agent.avatar }}</div>
               <div v-else class="builtin-icon normal">
                 <TIcon name="app" size="13px" />
               </div>
@@ -88,16 +88,15 @@
       <div class="agent-detail-panel-inner">
         <div class="agent-detail-content">
           <div class="detail-header">
+            <div v-if="activeDetail.agent.avatar" class="builtin-avatar detail-icon">{{ activeDetail.agent.avatar }}</div>
             <template
-              v-if="activeDetail.agent.id === BUILTIN_QUICK_ANSWER_ID || activeDetail.agent.id === BUILTIN_SMART_REASONING_ID">
+              v-else-if="activeDetail.agent.id === BUILTIN_QUICK_ANSWER_ID || activeDetail.agent.id === BUILTIN_SMART_REASONING_ID">
               <div class="builtin-icon detail-icon"
                 :class="activeDetail.agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal'">
                 <TIcon :name="activeDetail.agent.config?.agent_mode === 'smart-reasoning' ? 'control-platform' : 'chat'"
                   size="14px" />
               </div>
             </template>
-            <div v-else-if="activeDetail.agent.avatar" class="builtin-avatar detail-icon">{{ activeDetail.agent.avatar
-              }}</div>
             <AgentAvatar v-else :name="activeDetail.agent.name" size="small" />
             <div class="detail-title-wrap">
               <div class="detail-title-row">
@@ -200,6 +199,9 @@ import {
 } from '@/utils/agent-readiness';
 import { formatLocalizedList } from '@/utils/format-list';
 import { useChatResourcesStore } from '@/stores/chatResources';
+import { useManagedRuntime } from '@/composables/useManagedRuntime';
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities';
+import { agentUsesSystemModels } from '@/config/systemAgents';
 import {
   isAgentWebSearchEnabled,
   isAgentWebSearchReady,
@@ -210,6 +212,8 @@ const router = useRouter();
 const orgStore = useOrganizationStore();
 const settingsStore = useSettingsStore();
 const chatResources = useChatResourcesStore();
+const { managed: managedRuntime } = useManagedRuntime();
+const deployment = useDeploymentCapabilitiesStore();
 
 const props = defineProps<{
   visible: boolean;
@@ -249,18 +253,7 @@ const DETAIL_HIDE_DELAY_MS = 400;
 const agentsList = computed(() => props.agents ?? []);
 const webSearchProviders = computed(() => chatResources.webSearchProviders);
 
-const builtinAgents = computed(() => {
-  const apiBuiltins = agentsList.value.filter(a => a.is_builtin);
-  return apiBuiltins.map(agent => {
-    if (agent.id === BUILTIN_QUICK_ANSWER_ID) {
-      return { ...agent, name: t('input.normalMode'), description: t('input.normalModeDesc') };
-    }
-    if (agent.id === BUILTIN_SMART_REASONING_ID) {
-      return { ...agent, name: t('input.agentMode'), description: t('input.agentModeDesc') };
-    }
-    return agent;
-  });
-});
+const builtinAgents = computed(() => agentsList.value.filter(a => a.is_builtin && !a.is_internal));
 
 const customAgents = computed(() => agentsList.value.filter(a => !a.is_builtin));
 
@@ -393,7 +386,7 @@ const getAgentNotReadyReasonKeysFor = (agent: CustomAgent, sourceTenantId?: stri
   return getAgentNotReadyReasonKeys(agent.config, modelsList.value, {
     isAgentMode,
     isSharedAgent,
-  });
+  }).filter(key => !agentUsesSystemModels(agent, deployment.managedRuntime, managedRuntime.value) || !['summary_model', 'rerank_model'].includes(key));
 };
 
 const getAgentNotReadyLabels = (agent: CustomAgent, sourceTenantId?: string): string[] => {

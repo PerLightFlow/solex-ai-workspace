@@ -1,11 +1,13 @@
 import importlib.util
 from pathlib import Path
 import sys
+import json
+import tempfile
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy import replace_env, wait_frontend
+from deploy import replace_env, wait_frontend, prepare_rollback_image, verify_migrations
 from acceptance import acceptance_identity
 
 class RuntimeReleaseTests(unittest.TestCase):
@@ -38,5 +40,33 @@ class RuntimeReleaseTests(unittest.TestCase):
         with patch('deploy.frontend_ok', side_effect=RuntimeError('Frontend assets missing')), patch('deploy.time.sleep'), patch('deploy.time.monotonic', side_effect=[0, 1, 91]):
             with self.assertRaisesRegex(RuntimeError, 'Frontend health check timed out'):
                 wait_frontend()
+
+    def test_rollback_image_keeps_old_binary_and_includes_new_schema_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / 'source/app/migrations/versioned'
+            scripts.mkdir(parents=True)
+            migration = scripts / '000135_system_builtin_agents.up.sql'
+            migration.write_text('CREATE TABLE IF NOT EXISTS example (id text);')
+            state = root / 'state'
+            state.mkdir()
+            with patch('deploy.SOURCE', root / 'source'), patch('deploy.command') as command:
+                image = prepare_rollback_image(state, 'solex/solex-app:previous', 'solex-runtime-123456789abc')
+            dockerfile = (state / 'rollback-app/Dockerfile').read_text()
+            self.assertIn('FROM solex/solex-app:previous\n', dockerfile)
+            self.assertNotIn('COPY WeKnora', dockerfile)
+            self.assertEqual((state / 'rollback-app/migrations/versioned' / migration.name).read_bytes(), migration.read_bytes())
+            self.assertEqual(image, 'solex/solex-app:rollback-123456789abc')
+            command.assert_called_once()
+
+    def test_schema_validation_does_not_accept_health_alone(self):
+        for state in ({'version': 134, 'dirty': False}, {'version': 135, 'dirty': True}):
+            with patch('deploy.sql', return_value=json.dumps(state)):
+                with self.assertRaisesRegex(RuntimeError, 'schema version'):
+                    verify_migrations(135)
+        with patch('deploy.sql', return_value='{"version":135,"dirty":false}'), patch('deploy.Client') as client, patch('deploy.Path.read_text', return_value='{}'):
+            client.return_value.call.return_value = {'data': {'db_migration_failed': True}}
+            with self.assertRaisesRegex(RuntimeError, 'migration failure'):
+                verify_migrations(135)
 
 if __name__ == '__main__': unittest.main()

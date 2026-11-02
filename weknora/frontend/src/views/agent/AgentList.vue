@@ -39,6 +39,12 @@
       :count-mine="agents.length" :count-by-org="effectiveSharedCountByOrg" :count-favorites="agentFavoritesCount"
       :count-recents="agentRecentsCount" />
       <div class="agent-list-main">
+        <section v-if="deployment.managedRuntime && authStore.isSystemAdmin" class="system-agent-management">
+          <div class="system-agent-management__header">
+            <div><strong>{{ $t('systemAgents.title') }}</strong><p>{{ $t('systemAgents.scopeHint') }}</p></div>
+            <t-button variant="outline" @click="handleCreateSystemAgent">{{ $t('systemAgents.create') }}</t-button>
+          </div>
+        </section>
         <EmptyState v-if="keyword.trim() && !(loading || spaceAgentsLoading) && visibleResultCount === 0" icon="search"
           :title="$t('common.noResult')">
           <t-button variant="outline" @click="keyword = ''">{{ $t('common.clear') }}</t-button>
@@ -168,7 +174,7 @@
               </button>
               <div class="card-header">
                 <div class="card-header-left">
-                  <ResourceCardAvatar kind="agent" :emoji="agent.is_builtin ? undefined : agent.avatar" />
+                  <ResourceCardAvatar kind="agent" :emoji="agent.avatar" />
                   <span class="card-title" :title="agent.name">{{ agent.name }}</span>
                 </div>
                 <t-popup
@@ -192,7 +198,7 @@
                         <t-icon class="menu-icon" name="poweroff" />
                         <span>{{ agent.disabled_by_me ? $t('agent.enable') : $t('agent.disable') }}</span>
                       </div>
-                      <div v-if="!agent.is_builtin && canManageAgent(agent)" class="popup-menu-item delete"
+                      <div v-if="canDeleteAgent(agent)" class="popup-menu-item delete"
                         @click="handleDelete(agent)"><t-icon class="menu-icon" name="delete" /><span>{{
                           $t('common.delete') }}</span></div>
                     </div>
@@ -345,7 +351,7 @@
               <div class="card-header">
                 <div class="card-header-left">
                   <!-- 内置智能体使用简洁图标 -->
-                  <ResourceCardAvatar kind="agent" :emoji="agent.is_builtin ? undefined : agent.avatar" />
+                  <ResourceCardAvatar kind="agent" :emoji="agent.avatar" />
                   <span class="card-title" :title="agent.name">{{ agent.name }}</span>
                 </div>
                 <t-popup v-if="canManageAgent(agent) || authStore.hasRole('contributor') || authStore.hasRole('admin')"
@@ -371,7 +377,7 @@
                         <t-icon class="menu-icon" name="poweroff" />
                         <span>{{ agent.disabled_by_me ? $t('agent.enable') : $t('agent.disable') }}</span>
                       </div>
-                      <div v-if="!agent.is_builtin && canManageAgent(agent)" class="popup-menu-item delete"
+                      <div v-if="canDeleteAgent(agent)" class="popup-menu-item delete"
                         @click="handleDelete(agent)">
                         <t-icon class="menu-icon" name="delete" />
                         <span>{{ $t('common.delete') }}</span>
@@ -724,6 +730,7 @@
 
     <!-- 智能体编辑器弹窗 -->
     <AgentEditorModal :visible="editorVisible" :mode="editorMode" :agent="editingAgent"
+      :systemBuiltin="systemEditor"
       :initialSection="editorInitialSection"
       :initialHighlightField="editorInitialHighlightField"
       :readOnly="editorMode === 'edit' && editingAgent != null && !canManageAgent(editingAgent as AgentWithUI)"
@@ -742,7 +749,8 @@ import { MessagePlugin, Icon as TIcon } from 'tdesign-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import ResourceIcon from '@/components/icons/ResourceIcon.vue'
 import { useConfirmDelete } from '@/components/settings/useConfirmDelete'
-import { deleteAgent, copyAgent, type CustomAgent } from '@/api/agent'
+import { deleteAgent, copyAgent, deleteSystemAgent, getSystemAgent, type CustomAgent } from '@/api/agent'
+import { canManageAgentResource } from '@/config/systemAgents'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useI18n } from 'vue-i18n'
 import { createSessions } from '@/api/chat/index'
@@ -767,6 +775,7 @@ import ResourceSortControl from '@/components/ResourceSortControl.vue'
 import ResourceOriginBadge from '@/components/ResourceOriginBadge.vue'
 import { shouldShowResourceOriginBadge } from '@/utils/card-list-badge'
 import { useAuthStore } from '@/stores/auth'
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 import { useListUrlState } from '@/composables/useListUrlState'
 import { useResourcePins } from '@/composables/useResourcePins'
 import { integrationSectionKey } from '@/config/settingsRoute'
@@ -781,6 +790,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const deployment = useDeploymentCapabilitiesStore()
 const assistantStore = useAssistantStore()
 const assistantCreateVisible = ref(false)
 const uiStore = useUIStore()
@@ -788,6 +798,7 @@ const orgStore = useOrganizationStore()
 const chatResources = useChatResourcesStore()
 const { loaded: modelsReadyLoaded, isReadyForAgent } = useTenantModelReadiness()
 const selectedResourceSort = ref<ResourceSortValue>(DEFAULT_RESOURCE_SORT)
+const systemEditor = ref(false)
 
 interface AgentWithUI extends CustomAgent {
   showMore?: boolean
@@ -1287,9 +1298,15 @@ async function handleUseSharedAgentInChat(shared: SharedAgentInfo) {
   }
 }
 
-const handleEdit = (agent: AgentWithUI) => {
+const handleEdit = async (agent: AgentWithUI) => {
   openMoreAgentId.value = null
-  editingAgent.value = agent
+  systemEditor.value = Boolean(deployment.managedRuntime && agent.is_builtin && authStore.isSystemAdmin)
+  try {
+    editingAgent.value = systemEditor.value ? (await getSystemAgent(agent.id)).data : agent
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('systemAgents.loadFailed'))
+    return
+  }
   editorMode.value = 'edit'
   editorInitialSection.value = 'basic'
   editorInitialHighlightField.value = ''
@@ -1304,11 +1321,11 @@ const handleEdit = (agent: AgentWithUI) => {
 // mutation; this gate just hides buttons the user has no authority
 // to use.
 function canManageAgent(agent: AgentWithUI): boolean {
-  const userId = authStore.user?.id || ''
-  const creatorId = (agent as any).created_by || ''
-  // A creator demoted to Viewer no longer manages it (access.CreatorRoleFloor).
-  if (creatorId && userId && creatorId === userId && authStore.hasRole('contributor')) return true
-  return authStore.hasRole('admin')
+  return canManageAgentResource(agent, authStore, deployment.managedRuntime)
+}
+
+function canDeleteAgent(agent: AgentWithUI): boolean {
+  return canManageAgent(agent) && (!agent.is_builtin || deployment.managedRuntime)
 }
 
 // isMyAgent 仅用于卡片来源徽章在「我创建」与「同空间其他成员创建」之间切换。
@@ -1442,16 +1459,17 @@ const spaceAgentSectionCounts = computed<Record<AgentSectionKey, number>>(() => 
 })
 
 const handleDelete = (agent: AgentWithUI) => {
+  if (!canDeleteAgent(agent)) return
   openMoreAgentId.value = null
   confirmDelete({
-    title: t('agent.delete.confirmTitle'),
-    body: t('agent.delete.confirmMessage', { name: agent.name }),
+    title: t(agent.is_builtin ? 'systemAgents.removeTitle' : 'agent.delete.confirmTitle'),
+    body: t(agent.is_builtin ? 'systemAgents.removeConfirm' : 'agent.delete.confirmMessage', { name: agent.name }),
     onConfirm: async () => {
       try {
-        const res: any = await deleteAgent(agent.id)
+        const res: any = await (agent.is_builtin ? deleteSystemAgent(agent.id) : deleteAgent(agent.id))
         if (res.success) {
           MessagePlugin.success(t('agent.messages.deleted'))
-          fetchList(true)
+          await fetchList(true)
         } else {
           MessagePlugin.error(res.message || t('agent.messages.deleteFailed'))
         }
@@ -1535,11 +1553,18 @@ const handleEditorSuccess = (agent?: CustomAgent) => {
 
 // 暴露创建方法供外部调用
 const openCreateModal = () => {
+  systemEditor.value = false
   editingAgent.value = null
   editorMode.value = 'create'
   editorInitialSection.value = 'basic'
   editorInitialHighlightField.value = ''
   editorVisible.value = true
+}
+
+const handleCreateSystemAgent = () => {
+  if (!deployment.managedRuntime || !authStore.isSystemAdmin) return
+  openCreateModal()
+  systemEditor.value = true
 }
 
 // 创建智能体
@@ -1575,6 +1600,21 @@ watch(keyword, () => { collapsedAgentSections.value = new Set() })
 .agent-list-content { .resource-list-content(); }
 
 .agent-list-main { .resource-list-main(); }
+
+.system-agent-management {
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  p { margin: 5px 0 0; color: var(--td-text-color-secondary); font-size: 12px; }
+}
+.system-agent-management__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  > div:first-child { flex: 1; min-width: 0; }
+}
 
 .agent-list-main-loading {
   display: flex;

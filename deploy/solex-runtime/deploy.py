@@ -5,10 +5,11 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 from urllib import request
-from api_client import ROOT, private_write, save_json, wait_health, read_env
+from api_client import ROOT, Client, private_write, save_json, wait_health, read_env
 from acceptance import run as accept
 
 SOURCE = Path(__file__).resolve().parent
@@ -65,6 +66,36 @@ def wait_frontend(seconds=90):
     raise RuntimeError('Frontend health check timed out')
 
 
+def verify_migrations(expected_version):
+    state = json.loads(sql("SELECT json_build_object('version',version,'dirty',dirty) FROM schema_migrations;"))
+    if state != {'version': expected_version, 'dirty': False}:
+        raise RuntimeError('Database schema version or migration state is unexpected')
+    admin = Client()
+    admin.login(json.loads((ROOT / 'admin.json').read_text()))
+    info = admin.call('GET', '/system/info')['data']
+    if info.get('db_migration_failed') is not False or info.get('db_migration_error'):
+        raise RuntimeError('Application reported a database migration failure')
+
+
+def prepare_rollback_image(state_dir, source_image, release_id):
+    """Keep the previous application binary with the additive migration source.
+
+    golang-migrate requires the current DB version's SQL file even for a no-op.
+    Retaining that source avoids a false migration failure when reverting code,
+    and avoids dropping catalog rows or restoring over newly written user data.
+    """
+    if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._/@:+-]+', source_image):
+        raise ValueError('Invalid rollback image reference')
+    context = state_dir / 'rollback-app'
+    context.mkdir()
+    shutil.copytree(SOURCE / 'app/migrations', context / 'migrations')
+    (context / 'Dockerfile').write_text('FROM ' + source_image + '\nCOPY migrations/ /app/migrations/\n')
+    (context / '.dockerignore').write_text('*\n!Dockerfile\n!migrations/\n!migrations/**\n')
+    tag = 'solex/solex-app:rollback-' + release_id.removeprefix('solex-runtime-')
+    command('docker', 'build', '--pull=false', '--network=none', '-t', tag, str(context), timeout=300)
+    return tag
+
+
 def deploy():
     meta = json.loads((SOURCE / 'release.json').read_text())
     release_id = meta['release_id']
@@ -86,8 +117,16 @@ def deploy():
         running = command('docker','inspect','--format','{{.Image}}','weknora-native-' + service + '-1')
         configured = command('docker','image','inspect','--format','{{.Id}}',settings[key])
         if running != configured: raise RuntimeError('Saved image setting differs from the running service')
+    schema_before = json.loads(sql("SELECT json_build_object('version',version,'dirty',dirty) FROM schema_migrations;"))
+    if (meta.get('postgres_schema_before'), meta.get('postgres_schema_after')) != (134, 135):
+        raise RuntimeError('This release requires an explicitly reviewed additive schema transition')
+    if schema_before.get('dirty') or schema_before.get('version') not in (134, 135):
+        raise RuntimeError('Unexpected pre-release database schema; migration review required')
+    rollback_image = prepare_rollback_image(state_dir, settings['WEKNORA_APP_IMAGE'], release_id)
+    rollback_env = replace_env(old_env, {'WEKNORA_APP_IMAGE': rollback_image})
     if (state_dir / 'before.env').exists(): raise RuntimeError('Prior attempt exists; inspect before retry')
     private_write(state_dir / 'before.env', old_env)
+    private_write(state_dir / 'rollback.env', rollback_env)
     backup = command('docker', 'exec', 'weknora-native-postgres-1', 'pg_dump', '-U', 'weknora', '-d', 'weknora', '-Fc', binary=True)
     backup_path = state_dir / 'before.pgdump'
     fd = os.open(backup_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -107,6 +146,7 @@ def deploy():
         compose()
         wait_health()
         wait_frontend()
+        verify_migrations(meta['postgres_schema_after'])
         for service, key in [('app','app_image'),('frontend','ui_image')]:
             running = command('docker','inspect','--format','{{.Image}}','weknora-native-' + service + '-1')
             expected = command('docker','image','inspect','--format','{{.Id}}',meta[key])
@@ -125,7 +165,7 @@ def deploy():
             'reason':str(exc) if isinstance(exc, RuntimeError) else 'Details omitted',
             'environment_restored':False, 'model_flags_restored':False, 'services_restored':False}
         try:
-            private_write(env_path, old_env)
+            private_write(env_path, rollback_env)
             rollback['environment_restored'] = True
         except Exception:
             pass
@@ -145,6 +185,7 @@ def deploy():
                 compose()
                 wait_health()
                 wait_frontend()
+                verify_migrations(meta['postgres_schema_after'])
                 rollback['services_restored'] = True
             except Exception:
                 pass

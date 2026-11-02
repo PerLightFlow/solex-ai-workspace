@@ -114,7 +114,11 @@ func (s *sessionService) applyManagedAgentModelDefaults(ctx context.Context, cfg
 // Apply before leases, attachment routing and optional rerank checks, not only
 // when constructing the final LLM request. Workers use this path as well.
 func (s *sessionService) withManagedAgentModelDefaults(ctx context.Context, req *types.QARequest) *types.QARequest {
-	if !managedModelRestricted(ctx) || req == nil || req.CustomAgent == nil {
+	if req == nil || req.CustomAgent == nil {
+		return req
+	}
+	globalBuiltin := types.ManagedRuntimeEnabled() && req.CustomAgent.IsBuiltin && types.IsSystemBuiltinAgentID(req.CustomAgent.ID)
+	if !managedModelRestricted(ctx) && !globalBuiltin {
 		return req
 	}
 	copy := *req

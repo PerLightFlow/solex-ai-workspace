@@ -46,3 +46,26 @@ func TestManagedTemporaryDocumentCannotOverrideParser(t *testing.T) {
 	uploadWithEngine(t, h, "own-agent")
 	require.Empty(t, documents.options.ParserEngine)
 }
+
+func TestAdminGlobalAgentAttachmentsInheritSystemModels(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
+	ctx = context.WithValue(ctx, types.SystemAdminContextKey, true)
+	h := &Handler{modelService: managedAttachmentModels{models: []*types.Model{
+		{ID: "shared-chat", Type: types.ModelTypeKnowledgeQA, Status: types.ModelStatusActive, IsBuiltin: true, IsDefault: true},
+		{ID: "shared-vision", Type: types.ModelTypeVLLM, Status: types.ModelStatusActive, IsBuiltin: true, IsDefault: true},
+		{ID: "shared-audio", Type: types.ModelTypeASR, Status: types.ModelStatusActive, IsBuiltin: true, IsDefault: true},
+	}}}
+	for _, id := range []string{types.BuiltinQuickAnswerID, "builtin-123456789012345678901234"} {
+		agent := &types.CustomAgent{ID: id, IsBuiltin: true, TenantID: 7}
+		got := h.withManagedAttachmentModels(ctx, agent)
+		assert.Equal(t, "shared-chat", got.Config.ModelID)
+		assert.Equal(t, "shared-vision", got.Config.VLMModelID)
+		assert.Equal(t, "shared-audio", got.Config.ASRModelID)
+		assert.Equal(t, uint64(7), got.TenantID)
+		assert.Empty(t, agent.Config.ASRModelID, "global definition must remain unbound")
+	}
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "false")
+	agent := &types.CustomAgent{ID: types.BuiltinQuickAnswerID, IsBuiltin: true, TenantID: 7}
+	assert.Same(t, agent, h.withManagedAttachmentModels(ctx, agent))
+}

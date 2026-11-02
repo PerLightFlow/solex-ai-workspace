@@ -110,6 +110,8 @@ type CustomAgent struct {
 	Avatar string `yaml:"avatar" json:"avatar" gorm:"type:varchar(64)"`
 	// Whether this is a built-in agent (normal mode / agent mode)
 	IsBuiltin bool `yaml:"is_builtin" json:"is_builtin" gorm:"default:false" extensions:"x-agent"`
+	// Internal assistants stay outside the normal agent picker, but admins can manage them.
+	IsInternal bool `yaml:"-" json:"is_internal,omitempty" gorm:"-"`
 	// Tenant ID (composite primary key with ID)
 	TenantID uint64 `yaml:"tenant_id" json:"tenant_id" gorm:"primaryKey"`
 	// Created by user ID

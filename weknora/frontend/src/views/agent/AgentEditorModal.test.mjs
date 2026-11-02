@@ -6,21 +6,18 @@ import { effectScope, nextTick, ref, watch } from 'vue'
 
 const source = readFileSync(new URL('./AgentEditorModal.vue', import.meta.url), 'utf8')
 
-test('editing an agent closes the editor after a successful save', () => {
-  assert.match(
-    source,
-    /await updateAgent\(formData\.value\.id, payload\);\s*MessagePlugin\.success\(t\('agent\.messages\.updated'\)\);\s*emit\('success'\);\s*handleClose\(\);/
-  )
+test('editing uses the appropriate API and closes after a successful save', () => {
+  assert.match(source, /props\.systemBuiltin \? updateSystemAgent\(formData\.value\.id, payload\) : updateAgent\(formData\.value\.id, payload\)/)
+  assert.match(source, /MessagePlugin\.success\(t\('agent\.messages\.updated'\)\);\s*emit\('success'\);\s*handleClose\(\);/)
 })
 
-test('the first successful create stays open for integration setup', () => {
-  const createBranch = source.match(
-    /if \(editorMode\.value === 'create'\) \{([\s\S]*?)^\s{4}\} else \{/m
-  )?.[1]
-
-  assert.ok(createBranch, 'expected to find the create branch')
-  assert.doesNotMatch(createBranch, /handleClose\(\)/)
+test('personal creates stay open for integrations while global creates close', () => {
+  const save = source.slice(source.indexOf('const handleSave ='))
+  const createBranch = save.match(/if \(editorMode\.value === 'create'\) \{([\s\S]*?)^\s{4}\} else \{/m)?.[1]
+  assert.ok(createBranch)
+  assert.match(createBranch, /if \(props\.systemBuiltin\) handleClose\(\);/)
   assert.match(createBranch, /savedAgent\.value = created;/)
+  assert.match(createBranch, /if \(!props\.systemBuiltin\) void loadAgentIntegrationCounts/)
 })
 
 test('save button labels distinguish create from save-and-close', () => {

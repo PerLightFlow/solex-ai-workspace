@@ -18,6 +18,7 @@ function agent(config: CustomAgent['config'] = {}): CustomAgent {
 }
 
 function fixture(options: {
+  managed?: boolean
   load?: () => Promise<{ data?: CustomAgent | null }>
   save?: (data: UpdateAgentRequest) => Promise<{ data?: CustomAgent | null } | undefined>
   readStorage?: (key: string) => string | null
@@ -31,6 +32,7 @@ function fixture(options: {
     localStorage: { getItem: (key: string) => options.readStorage?.(key) ?? null },
     require(name: string) {
       if (name === 'vue') return require('vue')
+      if (name === '@/stores/deploymentCapabilities') return { useDeploymentCapabilitiesStore: () => ({ managedRuntime: options.managed ?? false, loadError: '', async ensureLoaded() {} }) }
       if (name === 'vue-i18n') return { useI18n: () => ({ t: (key: string) => key }) }
       if (name === 'tdesign-vue-next') return { MessagePlugin: { error: (message: string) => errors.push(message) } }
       if (name === '@/api/agent') return {
@@ -161,6 +163,7 @@ test('selector save exposes loading until completion and preserves a failed draf
   const first = f.model.onInstallerModelChange('next')
   assert.equal(f.model.installerModelId.value, 'next')
   assert.equal(f.model.savingInstallerModel.value, true)
+  await new Promise<void>(resolve => setImmediate(resolve))
   fail(new Error('permission denied'))
   await first
   assert.equal(f.model.installerModelId.value, 'next')
@@ -168,6 +171,7 @@ test('selector save exposes loading until completion and preserves a failed draf
   assert.deepEqual(f.errors, ['permission denied'])
   const retry = f.model.onInstallerModelChange('next')
   assert.equal(f.model.savingInstallerModel.value, true)
+  await new Promise<void>(resolve => setImmediate(resolve))
   succeed({ data: agent({ model_id: 'next' }) })
   await retry
   assert.equal(f.writes.length, 2)
@@ -197,4 +201,22 @@ test('reset clears the panel selection and cached metadata without affecting a s
   await f.model.persistInstallerModel('after-reset')
   assert.deepEqual(f.writes[0]?.data, { name: '', description: '', avatar: '', config: { model_id: 'after-reset' } })
   assert.equal(sibling.installerModelId.value, 'configured')
+})
+
+
+test('managed installers inherit system models and never persist a tenant override', async () => {
+  const f = fixture({ managed: true, readStorage: () => { throw new Error('must not read private model') } })
+  await f.model.loadInstallerModel()
+  assert.equal(f.model.managedInstaller.value, true)
+  assert.equal(f.model.installerModelId.value, '')
+  await f.model.persistInstallerModel('private-model')
+  assert.equal(f.writes.length, 0)
+  assert.equal(f.model.installerModelId.value, '')
+  assert.equal(f.reads.length, 2)
+})
+
+test('managed installer validates a real workflow instead of recreating a missing agent', async () => {
+  const f = fixture({ managed: true, load: async () => ({ data: null }) })
+  await assert.rejects(f.model.persistInstallerModel(''), /systemAgents.removedNotice/)
+  assert.equal(f.writes.length, 0)
 })

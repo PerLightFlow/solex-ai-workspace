@@ -301,7 +301,7 @@
         </section>
         <p v-else-if="!hostOnly" class="installer-model-hint">{{ $t('settings.skills.emptyNoSandboxHint') }}</p>
 
-        <section v-if="addTargetIds.length > 0" class="setting-drawer__section">
+        <section v-if="addTargetIds.length > 0 && !managedInstaller" class="setting-drawer__section">
           <h4 class="setting-drawer__section-title">{{ $t('settings.sandbox.skillInstallerModel') }}</h4>
           <p class="installer-model-hint">{{ $t('settings.sandbox.skillInstallerModelHint') }}</p>
           <ModelSelector model-type="KnowledgeQA" :selected-model-id="installerModelId"
@@ -358,7 +358,7 @@
       <p v-else-if="!hostOnly" class="installer-model-hint">
         {{ installMode === 'upgrade' ? $t('settings.skills.noSandboxToUpgrade') : $t('settings.skills.noSandboxToInstall') }}
       </p>
-      <section v-if="installTargetIds.length > 0" class="setting-drawer__section">
+      <section v-if="installTargetIds.length > 0 && !managedInstaller" class="setting-drawer__section">
         <h4 class="setting-drawer__section-title">{{ $t('settings.sandbox.skillInstallerModel') }}</h4>
         <p class="installer-model-hint">{{ $t('settings.sandbox.skillInstallerModelHint') }}</p>
         <ModelSelector model-type="KnowledgeQA" :selected-model-id="installerModelId"
@@ -482,7 +482,7 @@ const installing = ref(false)
 const uploadPercent = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const {
-  installerModelId, savingInstallerModel, loadInstallerModel, persistInstallerModel,
+  installerModelId, managedInstaller, savingInstallerModel, loadInstallerModel, persistInstallerModel,
   onInstallerModelChange,
 } = useSkillInstallerModel()
 
@@ -529,7 +529,7 @@ const addPrimaryDisabled = computed(() => {
     if (registeredCatalog.value) return false
     return !sourceInput.value.trim() && !pendingFile.value
   }
-  return addTargetIds.value.length > 0 && !installerModelId.value
+  return addTargetIds.value.length > 0 && !managedInstaller.value && !installerModelId.value
 })
 
 const addPrimaryText = computed(() => {
@@ -545,7 +545,7 @@ const installConfirmText = computed(() =>
 )
 
 const installConfirmDisabled = computed(() =>
-  installing.value || (installTargetIds.value.length > 0 && !installerModelId.value),
+  installing.value || (installTargetIds.value.length > 0 && !managedInstaller.value && !installerModelId.value),
 )
 
 const installPickRows = computed(() =>
@@ -1057,7 +1057,7 @@ function onPanelUpdated(record: SandboxConfigRecord) {
 
 async function ensureInstallerModelIfNeeded(configIds: string[]) {
   if (configIds.length === 0) return
-  if (!installerModelId.value) {
+  if (!managedInstaller.value && !installerModelId.value) {
     throw new Error(t('settings.sandbox.skillInstallerModelRequired'))
   }
   await persistInstallerModel(installerModelId.value)

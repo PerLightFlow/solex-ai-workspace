@@ -4,7 +4,7 @@
     'sandbox-skills-panel--focused': mode === 'list' && !!focusSkillId,
   }">
     <t-loading :loading="mode === 'list' && loading" size="small">
-      <section v-if="mode === 'install'" class="setting-drawer__section">
+      <section v-if="mode === 'install' && !managedInstaller" class="setting-drawer__section">
         <h4 class="setting-drawer__section-title">{{ $t('settings.sandbox.skillInstallerModel') }}</h4>
         <p class="installer-model-hint">{{ $t('settings.sandbox.skillInstallerModelHint') }}</p>
         <ModelSelector
@@ -745,7 +745,7 @@ let panelGeneration = 0
 let pollTimer: number | null = null
 
 const {
-  installerModelId, savingInstallerModel, loadInstallerModel, persistInstallerModel,
+  installerModelId, managedInstaller, savingInstallerModel, loadInstallerModel, persistInstallerModel,
   onInstallerModelChange, resetInstallerModel,
 } = useSkillInstallerModel()
 
@@ -1269,7 +1269,7 @@ function skillBundleErrorMessage(err: any, fallbackKey: string): string {
 
 async function uploadFile(file: File) {
   if (!props.record || installBusy.value) return
-  if (!installerModelId.value) {
+  if (!managedInstaller.value && !installerModelId.value) {
     MessagePlugin.warning(t('settings.sandbox.skillInstallerModelRequired'))
     return
   }
@@ -1304,7 +1304,7 @@ async function installFromSource() {
   if (!props.record || installBusy.value) return
   const source = sourceInput.value.trim()
   if (!source) return
-  if (!installerModelId.value) {
+  if (!managedInstaller.value && !installerModelId.value) {
     MessagePlugin.warning(t('settings.sandbox.skillInstallerModelRequired'))
     return
   }

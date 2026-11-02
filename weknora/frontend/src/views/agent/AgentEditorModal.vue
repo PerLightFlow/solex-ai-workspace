@@ -1,12 +1,13 @@
 <template>
   <SettingsModalShell :visible="visible"
-    :title="editorMode === 'create' ? $t('agent.editor.createTitle') : $t('agent.editor.editTitle')"
+    :title="systemBuiltin ? $t(editorMode === 'create' ? 'systemAgents.create' : 'systemAgents.edit') : editorMode === 'create' ? $t('agent.editor.createTitle') : $t('agent.editor.editTitle')"
     v-model="currentSection" :nav-groups="navGroups" :loading="editorInitializing" :z-index="1000"
     nav-guide="agent-editor-sidebar" nav-item-guide-prefix="agent-editor-nav" @close="modalShell.requestClose">
     <div ref="contentWrapperRef" class="content-wrapper" :class="{ 'content-wrapper--prompts': currentSection === 'prompts' }">
       <!-- 基础设置 -->
       <div v-show="currentSection === 'basic'" class="section">
-        <t-alert v-if="managedRuntime" theme="info" :message="$t('managedRuntime.description')" style="margin-bottom: 20px" />
+        <t-alert v-if="systemBuiltin" theme="warning" :message="$t('systemAgents.editHint')" style="margin-bottom: 20px" />
+        <t-alert v-else-if="managedRuntime" theme="info" :message="$t('managedRuntime.description')" style="margin-bottom: 20px" />
         <div class="section-header">
           <div class="section-header-title">
             <h2>{{ $t('agent.editor.basicInfo') }}</h2>
@@ -41,7 +42,7 @@
           </div>
 
           <!-- 集成渠道状态（编辑模式，配置在集成中心） -->
-          <div v-if="editorMode === 'edit' && editorAgent?.id" class="setting-row">
+          <div v-if="!systemBuiltin && editorMode === 'edit' && editorAgent?.id" class="setting-row">
             <div class="setting-info">
               <label>{{ $t('integrations.agentEditor.label') }}</label>
               <p class="desc">{{ isPostCreateSession ? $t('agent.editor.postCreateHint.integrationDesc') : $t('integrations.agentEditor.desc') }}</p>
@@ -69,7 +70,7 @@
                 $t('agent.editor.normalDesc') }}</p>
             </div>
             <div class="setting-control">
-              <t-radio-group v-model="agentMode" :disabled="isBuiltinAgent" data-guide="agent-create-mode">
+              <t-radio-group v-model="agentMode" :disabled="isBuiltinAgent && (!systemBuiltin || reservedModeAgent)" data-guide="agent-create-mode">
                 <t-radio-button value="quick-answer">
                   {{ $t('agent.type.normal') }}
                 </t-radio-button>
@@ -90,7 +91,7 @@
                 agentTypePresetDescription(activeAgentTypePreset) }}</p>
             </div>
             <div class="setting-control">
-              <t-select :value="agentType" @change="onAgentTypeChange" :disabled="isBuiltinAgent"
+              <t-select :value="agentType" @change="onAgentTypeChange" :disabled="isBuiltinAgent && !systemBuiltin"
                 :placeholder="$t('agentEditor.agentType.label')" :options="agentTypeSelectOptions"
                 :popup-props="{ overlayClassName: 'agent-type-popup' }" class="agent-type-select">
                 <template #option="{ option }">
@@ -119,8 +120,18 @@
                 <!-- 自定义智能体使用 AgentAvatar -->
                 <AgentAvatar v-else :name="formData.name || '?'" size="medium" />
                 <t-input v-model="formData.name" :placeholder="$t('agent.editor.namePlaceholder')"
-                  class="name-input" :disabled="isBuiltinAgent" />
+                  class="name-input" :disabled="isBuiltinAgent && !systemBuiltin" />
               </div>
+            </div>
+          </div>
+
+          <div v-if="systemBuiltin" class="setting-row">
+            <div class="setting-info">
+              <label>{{ $t('systemAgents.avatar') }}</label>
+              <p class="desc">{{ $t('systemAgents.avatarHint') }}</p>
+            </div>
+            <div class="setting-control">
+              <t-input v-model="formData.avatar" :maxlength="16" />
             </div>
           </div>
 
@@ -133,7 +144,7 @@
             <div class="setting-control">
               <t-textarea v-model="formData.description"
                 :placeholder="$t('agent.editor.descriptionPlaceholder')"
-                :autosize="{ minRows: 2, maxRows: 4 }" :disabled="isBuiltinAgent" />
+                :autosize="{ minRows: 2, maxRows: 4 }" :disabled="isBuiltinAgent && !systemBuiltin" />
             </div>
           </div>
 
@@ -1258,7 +1269,7 @@
             <div class="setting-control">
               <t-radio-group v-model="mcpSelectionMode">
                 <t-radio-button value="all">{{ $t('agentEditor.selection.all') }}</t-radio-button>
-                <t-radio-button value="selected">{{ $t('agentEditor.selection.selected') }}</t-radio-button>
+                <t-radio-button v-if="!systemBuiltin" value="selected">{{ $t('agentEditor.selection.selected') }}</t-radio-button>
                 <t-radio-button value="none">{{ $t('agentEditor.selection.disabled') }}</t-radio-button>
               </t-radio-group>
             </div>
@@ -1375,7 +1386,7 @@
             <div class="setting-control sandbox-select-control">
               <t-radio-group v-model="skillsSelectionMode">
                 <t-radio-button value="all" :disabled="!canEnableSkills">{{ $t('agent.editor.skillsAll') }}</t-radio-button>
-                <t-radio-button value="selected" :disabled="!canEnableSkills">{{ $t('agent.editor.skillsSelected') }}</t-radio-button>
+                <t-radio-button v-if="!systemBuiltin" value="selected" :disabled="!canEnableSkills">{{ $t('agent.editor.skillsSelected') }}</t-radio-button>
                 <t-radio-button value="none">{{ $t('agent.editor.skillsNone') }}</t-radio-button>
               </t-radio-group>
               <p v-if="!managedRuntime && !hasSandboxSelected && sandboxConfigOptions.length > 1" class="desc empty-hint">
@@ -1527,8 +1538,8 @@
             </div>
             <div class="setting-control">
               <t-radio-group v-model="kbSelectionMode">
-                <t-radio-button value="all">{{ $t('agent.editor.allKnowledgeBases') }}</t-radio-button>
-                <t-radio-button value="selected">{{ $t('agent.editor.selectedKnowledgeBases')
+                <t-radio-button value="all">{{ $t(systemBuiltin ? 'systemAgents.scopeAll' : 'agent.editor.allKnowledgeBases') }}</t-radio-button>
+                <t-radio-button v-if="!systemBuiltin" value="selected">{{ $t('agent.editor.selectedKnowledgeBases')
                   }}</t-radio-button>
                 <t-radio-button value="none">{{ $t('agent.editor.noKnowledgeBase') }}</t-radio-button>
               </t-radio-group>
@@ -1847,7 +1858,7 @@
         {{ props.readOnly ? $t('common.close') : $t('common.cancel') }}
       </t-button>
       <t-button v-if="!props.readOnly" theme="primary" data-guide="agent-create-submit" :loading="saving"
-        :disabled="editorInitializing" @click="handleSave">
+        :disabled="editorInitializing" @click="requestSave">
         {{ saveButtonLabel }}
       </t-button>
     </template>
@@ -1880,6 +1891,8 @@
 
 <script setup lang="ts">
 import { managedAgentConfig } from '@/config/managedRuntime'
+import { systemAgentConfig } from '@/config/systemAgents'
+import { createSystemAgent, updateSystemAgent } from '@/api/agent'
 import { useManagedRuntime } from '@/composables/useManagedRuntime'
 
 import { useAssistantDataChange } from '@/utils/assistantDataChange';
@@ -1894,7 +1907,7 @@ import { useI18n } from 'vue-i18n';
 import { selectInitialModelId } from '@/utils/modelDefaults';
 import { hydrateAgentPromptRefs, serializeAgentPrompts } from '@/utils/agentPromptTemplates';
 import { copyWithToast } from '@/utils/clipboard';
-import { MessagePlugin } from 'tdesign-vue-next';
+import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next';
 import { useModalShell } from '@/composables/useModalShell'
 import { useAssistantPageContext } from '@/composables/useAssistantPageContext'
 import SettingsModalShell from '@/components/SettingsModalShell.vue'
@@ -1971,7 +1984,7 @@ import {
 } from '@/utils/reasoningEffort';
 
 // File extensions offered in the agent-level chat attachment parsing policy.
-const { managed: managedRuntime } = useManagedRuntime()
+const { managed: managedUserRuntime } = useManagedRuntime()
 const CHAT_PARSER_EXTENSIONS = [
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'epub', 'mhtml',
   'txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'yaml', 'yml', 'log',
@@ -2000,7 +2013,10 @@ const props = defineProps<{
   // wired here yet (the modal has 3000+ lines of form inputs); instead
   // we just remove the only mutation surface — the footer button.
   readOnly?: boolean;
+  systemBuiltin?: boolean;
 }>();
+
+const managedRuntime = computed(() => managedUserRuntime.value || props.systemBuiltin === true);
 
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void;
@@ -2011,6 +2027,8 @@ const emit = defineEmits<{
 const savedAgent = ref<CustomAgent | null>(null);
 const editorMode = computed(() => (savedAgent.value ? 'edit' : props.mode));
 const editorAgent = computed(() => savedAgent.value ?? props.agent ?? null);
+const reservedModeAgent = computed(() => editorAgent.value?.is_internal ||
+  ['builtin-quick-answer', 'builtin-smart-reasoning'].includes(editorAgent.value?.id || ''));
 const isPostCreateSession = computed(() => !!savedAgent.value);
 
 useAssistantDataChange((changes) => {
@@ -3731,7 +3749,7 @@ watch(() => props.visible, async (val) => {
       });
       // Display inherited defaults for all agents without persisting a copy.
       fillBuiltinAgentDefaults();
-      void loadAgentIntegrationCounts(agentData.id);
+      if (!props.systemBuiltin) void loadAgentIntegrationCounts(agentData.id);
     } else {
       // 创建新智能体，使用系统默认值
       storedToolNames.value = [];
@@ -3775,6 +3793,7 @@ watch(() => props.visible, async (val) => {
         }
       }
       formData.value = newFormData;
+      formData.value.is_builtin = props.systemBuiltin === true;
       // 新建智能体：知识库默认 "全部"，MCP / Skills 仍默认 "不使用"。
       kbSelectionMode.value = 'all';
       mcpSelectionMode.value = 'none';
@@ -3801,6 +3820,12 @@ watch(() => props.visible, async (val) => {
       applyDefaultModelsIfEmpty()
     }
 
+    if (props.systemBuiltin) {
+      Object.assign(formData.value.config, systemAgentConfig(formData.value.config));
+      initKbSelectionMode();
+      initMcpSelectionMode();
+      initSkillsSelectionMode();
+    }
     await syncInstalledSkills()
     if (generation !== editorInitializationGeneration || !props.visible) return;
 
@@ -5051,9 +5076,22 @@ const hasPlaceholder = (text: string | undefined, placeholder: string): boolean 
   return text.includes(`{{${placeholder}}}`);
 };
 
+const requestSave = () => {
+  if (props.readOnly) return;
+  if (!props.systemBuiltin) { void handleSave(); return; }
+  const dialog = DialogPlugin.confirm({
+    header: t('systemAgents.saveTitle'),
+    body: t('systemAgents.saveConfirm', { name: formData.value.name }),
+    confirmBtn: t('common.confirm'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => { dialog.hide(); await handleSave(); },
+  });
+};
+
 const handleSave = async () => {
+  if (props.readOnly || (props.systemBuiltin && !authStore.isSystemAdmin)) return;
   // 验证必填项（内置智能体不验证名称和系统提示词）
-  if (!isBuiltinAgent.value) {
+  if (!isBuiltinAgent.value || props.systemBuiltin) {
     if (!formData.value.name || !formData.value.name.trim()) {
       MessagePlugin.error(t('agent.editor.nameRequired'));
       currentSection.value = 'basic';
@@ -5128,11 +5166,13 @@ const handleSave = async () => {
 
   if (hostOnly.value) formData.value.config.sandbox_config_id = ''
 
-  const payload = { ...formData.value, config: managedAgentConfig(serializeAgentPrompts({ ...formData.value.config, allowed_tools: allowedToolsToSave() }, promptTemplates.value), managedRuntime.value) };
+  const config = managedAgentConfig(serializeAgentPrompts({ ...formData.value.config, allowed_tools: allowedToolsToSave() }, promptTemplates.value), managedRuntime.value);
+  const payload = { name: formData.value.name, description: formData.value.description, avatar: formData.value.avatar,
+    config: props.systemBuiltin ? systemAgentConfig(config) : config };
   saving.value = true;
   try {
     if (editorMode.value === 'create') {
-      const result: any = await createAgent(payload);
+      const result: any = await (props.systemBuiltin ? createSystemAgent(payload) : createAgent(payload));
       const created = result?.data as CustomAgent | undefined;
       if (!created?.id) {
         throw new Error(result?.message || t('agent.messages.saveFailed'));
@@ -5149,12 +5189,13 @@ const handleSave = async () => {
       modalShell.markClean();
       markContextualGuideDone('agentCreate')
       currentSection.value = 'basic';
-      void loadAgentIntegrationCounts(created.id);
+      if (!props.systemBuiltin) void loadAgentIntegrationCounts(created.id);
       MessagePlugin.success(t('agent.messages.created'));
       notifyAllowedToolsWarnings(result?.allowed_tools_warnings);
       emit('success', created);
+      if (props.systemBuiltin) handleClose();
     } else {
-      const updated: any = await updateAgent(formData.value.id, payload);
+      const updated: any = await (props.systemBuiltin ? updateSystemAgent(formData.value.id, payload) : updateAgent(formData.value.id, payload));
       MessagePlugin.success(t('agent.messages.updated'));
       emit('success');
       handleClose();

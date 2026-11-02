@@ -43,7 +43,7 @@ for (const mode of ['normal', 'embedded', 'after', 'inject']) {
       allSelectedItems: { value: [] }, selectedModelId: { value: 'model' },
       composerModelId: { value: 'host-model' },
       selectedAgent: { value: { config: {} } },
-      settingsStore: {}, chatResources: { isLoaded: () => true },
+      settingsStore: { toggleAgent() {} }, chatResources: { isLoaded: () => true, async ensureAgents() {} },
       collectAgentNotReadyReasons: () => ({ keys: [], labels: [] }),
       attachmentUploadRef: { value: null },
       emit: (name, _query, model) => {
@@ -144,3 +144,33 @@ test('new-session focus survives consumption of the first query and runs on chil
   mounted()
   assert.equal(focused, true)
 })
+
+
+for (const nextMode of [null, 'quick-answer', 'smart-reasoning']) {
+  test(`fresh server template ${nextMode ?? 'removed'} controls sending without losing drafts`, async () => {
+    const effects = []
+    const selectedAgent = { value: { config: { agent_mode: 'quick-answer' } } }
+    const showAgentModeSelector = { value: false }
+    const send = vm.runInNewContext(ts.transpile(`${sendCode}\ncreateSession`), {
+      props: { embeddedMode: false, isReplying: false }, managedRuntime: { value: true },
+      uploadedAttachments: { value: [] }, uploadedImages: { value: [] }, allSelectedItems: { value: [] },
+      selectedModelId: { value: 'private-model' }, attachmentUploadRef: { value: null },
+      selectedAgent, showAgentModeSelector,
+      chatResources: { isLoaded: () => true, async ensureAgents(force) {
+        assert.equal(force, true)
+        selectedAgent.value = nextMode ? { config: { agent_mode: nextMode } } : undefined
+      } },
+      settingsStore: { toggleAgent: value => effects.push(['mode', value]) },
+      collectAgentNotReadyReasons: () => ({ keys: [], labels: [] }),
+      MessagePlugin: { warning: key => effects.push(['warning', key]) }, t: key => key,
+      emit: (event, _query, model) => effects.push([event, model]), clearvalue: () => effects.push(['clear']), focusInput() {},
+    })
+    await send('keep my draft')
+    if (!nextMode) {
+      assert.deepEqual(effects, [['warning', 'systemAgents.removedNotice']])
+      assert.equal(showAgentModeSelector.value, true)
+    } else {
+      assert.deepEqual(effects, [['mode', nextMode === 'smart-reasoning'], ['send-msg', ''], ['clear']])
+    }
+  })
+}

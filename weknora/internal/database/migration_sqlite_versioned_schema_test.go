@@ -47,20 +47,22 @@ var versionedSQLiteTables = []string{
 	"notifications",
 	"session_sandbox_assignments",
 	"sandbox_user_machines",
+	"system_builtin_agents",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
 // versioned migrations add and the SQLite baseline was missing.
 var versionedSQLiteColumns = map[string][]string{
-	"automations":           {"model_id"},                                                  // 000049
-	"automation_runs":       {"execution_duration_ms"},                                     // 000048
-	"model_catalog_configs": {"version", "overlay", "history", "updated_by", "updated_at"}, // 000031
-	"memory_subjects":       {"extraction_state"},                                          // 000094
-	"memory_items":          {"replaces_id"},                                               // 000094
-	"tenants":               {"api_principal_config"},                                      // 000064
-	"users":                 {"is_system_admin"},                                           // 000053
-	"knowledges":            {"pending_subtasks_count", "profile"},                         // 000056, 000101
-	"knowledge_bases":       {"profile_config", "generated_profile"},                       // 000101
+	"system_builtin_agents": {"config", "is_internal", "sort_order", "customized", "deleted_at"}, // 000052
+	"automations":           {"model_id"},                                                        // 000049
+	"automation_runs":       {"execution_duration_ms"},                                           // 000048
+	"model_catalog_configs": {"version", "overlay", "history", "updated_by", "updated_at"},       // 000031
+	"memory_subjects":       {"extraction_state"},                                                // 000094
+	"memory_items":          {"replaces_id"},                                                     // 000094
+	"tenants":               {"api_principal_config"},                                            // 000064
+	"users":                 {"is_system_admin"},                                                 // 000053
+	"knowledges":            {"pending_subtasks_count", "profile"},                               // 000056, 000101
+	"knowledge_bases":       {"profile_config", "generated_profile"},                             // 000101
 	// 000034/085/097/105/119
 	"messages": {"attachments", "usage", "sandbox_checkpoint", "context_checkpoint", "run_state"},
 	"sessions": {
@@ -88,7 +90,7 @@ var versionedSQLiteColumns = map[string][]string{
 	}, // 000028
 }
 
-const expectedSQLiteMigrationVersion = 51
+const expectedSQLiteMigrationVersion = 52
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

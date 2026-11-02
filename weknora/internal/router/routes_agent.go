@@ -21,6 +21,15 @@ import (
 // (IsBuiltin=true) have an empty creator and are always Admin+. Reads
 // are Viewer+, copy is Contributor+ (the copy is owned by the caller).
 func RegisterCustomAgentRoutes(r *gin.RouterGroup, agentHandler *handler.CustomAgentHandler, g *rbacGuards) {
+	// No API-key policy is registered: only a real platform administrator may
+	// mutate definitions shared by every workspace (not personal Owners).
+	systemAgents := r.Group("/system/builtin-agents", g.SystemAdmin())
+	systemAgents.GET("", agentHandler.ListSystemBuiltinAgents)
+	systemAgents.GET("/:id", agentHandler.GetSystemBuiltinAgent)
+	systemAgents.POST("", agentHandler.CreateSystemBuiltinAgent)
+	systemAgents.PUT("/:id", agentHandler.UpdateSystemBuiltinAgent)
+	systemAgents.DELETE("/:id", agentHandler.DeleteSystemBuiltinAgent)
+
 	agents := g.apiKeyGroup(r.Group("/agents"), apiKeyFullAccess())
 	// agentsRead are the agent read endpoints. They stay full-access only for
 	// plain scoped keys (agent config can carry sensitive model/MCP bindings),

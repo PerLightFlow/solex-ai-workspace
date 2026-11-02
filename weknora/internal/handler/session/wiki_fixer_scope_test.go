@@ -106,6 +106,29 @@ func TestResolveBuiltinWikiFixerTenantScope_PinsConfigToTheSharedKB(t *testing.T
 	require.Equal(t, "all", agent.Config.KBSelectionMode, "must not mutate the caller's agent")
 }
 
+func TestManagedWikiFixerPreservesGlobalDefinitionWithSharedKBRestrictions(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
+	agent := &types.CustomAgent{
+		ID: types.BuiltinWikiFixerID, TenantID: 10, IsBuiltin: true,
+		Config: types.CustomAgentConfig{
+			SystemPrompt: "System administrator instructions", AllowedTools: []string{"wiki_search"},
+			KBSelectionMode: "all", MCPSelectionMode: "all", WebSearchEnabled: true,
+		},
+	}
+	scoped, tenant := resolveBuiltinWikiFixerTenantScope(
+		context.Background(), agent, 10, types.TenantRoleContributor, []string{"kb-shared"},
+		&wikiFixerKBLookupStub{kb: &types.KnowledgeBase{ID: "kb-shared", TenantID: 20}},
+		&wikiFixerKBShareStub{permission: types.OrgRoleEditor, isShared: true},
+	)
+	require.Equal(t, uint64(20), tenant)
+	require.Equal(t, agent.Config.SystemPrompt, scoped.Config.SystemPrompt)
+	require.Equal(t, agent.Config.AllowedTools, scoped.Config.AllowedTools)
+	require.Equal(t, []string{"kb-shared"}, scoped.Config.KnowledgeBases)
+	require.Equal(t, "none", scoped.Config.MCPSelectionMode)
+	require.False(t, scoped.Config.WebSearchEnabled)
+	require.Equal(t, "all", agent.Config.KBSelectionMode)
+}
+
 func TestResolveBuiltinWikiFixerTenantScope_SharedViewerDoesNotSwitchTenant(t *testing.T) {
 	agent := &types.CustomAgent{ID: types.BuiltinWikiFixerID, TenantID: 10, IsBuiltin: true}
 	kbLookup := &wikiFixerKBLookupStub{

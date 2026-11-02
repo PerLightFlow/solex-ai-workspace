@@ -80,8 +80,13 @@ func resolveBuiltinWikiFixerTenantScope(
 	// (an "all" KB or MCP scope, skills, sandbox, models) would reach the
 	// owner's other resources, so start from the built-in defaults and pin
 	// the config to this one KB. Models fall back to the KB's own.
-	if builtin := types.GetBuiltinAgent(agent.ID, kb.TenantID); builtin != nil {
-		scopedAgent.Config = builtin.Config
+	// In managed mode the already-resolved configuration is the system
+	// administrator's definition, not a per-workspace customization. Keep it
+	// while applying the same resource restrictions below.
+	if !types.ManagedRuntimeEnabled() {
+		if builtin := types.GetBuiltinAgent(agent.ID, kb.TenantID); builtin != nil {
+			scopedAgent.Config = builtin.Config
+		}
 	}
 	scopedAgent.Config.KBSelectionMode = "selected"
 	scopedAgent.Config.KnowledgeBases = []string{kb.ID}

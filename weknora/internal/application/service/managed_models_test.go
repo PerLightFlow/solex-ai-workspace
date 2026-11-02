@@ -98,6 +98,24 @@ func TestManagedAgentWithoutModelRunsAndFollowsChangedDefault(t *testing.T) {
 	require.ErrorContains(t, err, "管理员")
 }
 
+func TestSystemBuiltinAdministratorUsesCentralOptionalModels(t *testing.T) {
+	ctx := context.WithValue(managedMemberContext(t), types.SystemAdminContextKey, true)
+	svc := &sessionService{modelService: &stubModelService{availableModels: []*types.Model{
+		managedTestModel("shared-rerank", types.ModelTypeRerank),
+		managedTestModel("shared-vision", types.ModelTypeVLLM),
+		managedTestModel("shared-audio", types.ModelTypeASR),
+	}}}
+	req := &types.QARequest{CustomAgent: &types.CustomAgent{ID: "builtin-global-test", IsBuiltin: true, TenantID: 22}}
+	got := svc.withManagedAgentModelDefaults(ctx, req)
+	require.Equal(t, "shared-rerank", got.CustomAgent.Config.RerankModelID)
+	require.Equal(t, "shared-vision", got.CustomAgent.Config.VLMModelID)
+	require.Equal(t, "shared-audio", got.CustomAgent.Config.ASRModelID)
+	require.EqualValues(t, 22, got.CustomAgent.TenantID)
+	require.Empty(t, req.CustomAgent.Config.VLMModelID, "runtime overlay must leave the catalog unchanged")
+	personal := &types.QARequest{CustomAgent: &types.CustomAgent{ID: "personal", Config: types.CustomAgentConfig{VLMModelID: "admin-personal"}}}
+	require.Same(t, personal, svc.withManagedAgentModelDefaults(ctx, personal), "administrator's personal agent remains configurable")
+}
+
 func TestManagedKnowledgeBaseDefaultsAndExistingEmbeddingProtection(t *testing.T) {
 	ctx := managedMemberContext(t)
 	models := &stubModelService{availableModels: []*types.Model{managedTestModel("chat", types.ModelTypeKnowledgeQA), managedTestModel("embed-new", types.ModelTypeEmbedding)}}

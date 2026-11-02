@@ -10,7 +10,12 @@ import (
 // config. Resolve optional shared models here too, without mutating the stored
 // agent or changing which tenant owns the conversation and uploaded files.
 func (h *Handler) withManagedAttachmentModels(ctx context.Context, agent *types.CustomAgent) *types.CustomAgent {
-	if agent == nil || !types.ManagedRuntimeEnabled() || types.IsSystemAdminFromContext(ctx) {
+	if agent == nil || !types.ManagedRuntimeEnabled() {
+		return agent
+	}
+	// Global definitions inherit runtime models for administrators too. Their
+	// personal agents keep explicit model choices and parser settings.
+	if types.IsSystemAdminFromContext(ctx) && !(agent.IsBuiltin && types.IsSystemBuiltinAgentID(agent.ID)) {
 		return agent
 	}
 	copy := *agent

@@ -60,7 +60,7 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
       const locale = getCurrentLanguage()
       agentsInflightLocale = locale
       const res = (await listAgents()) as { data?: CustomAgent[]; disabled_own_agent_ids?: string[] }
-      return { data: res.data || [], disabled: res.disabled_own_agent_ids || [], locale }
+      return { data: (res.data || []).filter(agent => !agent.is_internal), disabled: res.disabled_own_agent_ids || [], locale }
     },
     ({ data, disabled, locale }) => {
       agents.value = data

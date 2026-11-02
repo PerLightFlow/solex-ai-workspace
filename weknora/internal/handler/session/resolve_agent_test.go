@@ -1,14 +1,18 @@
 package session
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -195,6 +199,67 @@ func TestResolveAgent_UsesShareWhenNoOwnAgentMatches(t *testing.T) {
 	require.Equal(t, sharedAgent, agent)
 	require.Equal(t, uint64(84), effectiveTenantID)
 	require.True(t, sharedReadOnly)
+}
+
+func TestManagedSystemAgentCannotResolveThroughOldShare(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
+	for _, id := range []string{types.BuiltinSmartReasoningID, "builtin-custom-system-agent"} {
+		for _, sourceTenant := range []uint64{0, 84} {
+			c, ctx := newResolveAgentTestContext(7)
+			h := &Handler{
+				customAgentService: &resolveOwnAgentStub{err: service.ErrAgentNotFound},
+				agentShareService: &resolveAgentShareStub{agent: &types.CustomAgent{
+					ID: id, TenantID: 84, IsBuiltin: true,
+				}},
+			}
+			agent, tenant, shared := h.resolveAgent(ctx, c, id, sourceTenant)
+			require.Nil(t, agent, "removed system agent cannot fall back to a shared record")
+			require.Zero(t, tenant)
+			require.False(t, shared)
+		}
+	}
+}
+
+func TestManagedSystemAgentExecutesInCallerWorkspace(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
+	c, ctx := newResolveAgentTestContext(7)
+	definition := &types.CustomAgent{ID: "builtin-custom-system-agent", TenantID: 7, IsBuiltin: true}
+	h := &Handler{customAgentService: &resolveOwnAgentStub{agent: definition}}
+	agent, tenant, shared := h.resolveAgent(ctx, c, definition.ID, 0)
+	require.Equal(t, uint64(7), agent.TenantID)
+	require.Zero(t, tenant, "system configuration must not switch execution into the administrator workspace")
+	require.False(t, shared)
+}
+
+type availableAgentSessionStub struct{ interfaces.SessionService }
+
+func (*availableAgentSessionStub) GetOwnedSession(context.Context, string) (*types.Session, error) {
+	return &types.Session{ID: "session-1", TenantID: 7}, nil
+}
+
+func TestQARejectsUnavailableAgentBeforeGeneratingResponse(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
+	gin.SetMode(gin.TestMode)
+	for _, endpoint := range []string{"knowledge-chat", "agent-chat"} {
+		for _, id := range []string{types.BuiltinSmartReasoningID, "builtin-custom-system-agent", "deleted-personal-agent"} {
+			h := &Handler{
+				sessionService:     &availableAgentSessionStub{},
+				customAgentService: &resolveOwnAgentStub{err: service.ErrAgentNotFound},
+			}
+			router := gin.New()
+			router.Use(middleware.ErrorHandler())
+			router.POST("/knowledge-chat/:session_id", h.KnowledgeQA)
+			router.POST("/agent-chat/:session_id", h.AgentQA)
+			body, err := json.Marshal(CreateKnowledgeQARequest{Query: "continue", AgentID: id})
+			require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodPost, "/"+endpoint+"/session-1", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+			require.Contains(t, response.Body.String(), "Agent is no longer available")
+		}
+	}
 }
 
 func TestTerminalProvisionPin_UsesSharedAgentSandboxConfig(t *testing.T) {

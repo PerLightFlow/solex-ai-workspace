@@ -48,7 +48,7 @@ async function fixture(initial: SkillCatalogItem[], host = false) {
     },
     '@/components/settings/useConfirmDelete': { useConfirmDelete: () => () => {} },
     '@/composables/useSkillInstallerModel': {
-      useSkillInstallerModel: () => ({ installerModelId: ref(''), savingInstallerModel: ref(false) }),
+      useSkillInstallerModel: () => ({ installerModelId: ref(''), managedInstaller: ref(false), savingInstallerModel: ref(false) }),
     },
     '@/composables/useConfigSkillInstallProgress': {
       useConfigSkillInstallProgress: () => ({ percentOf: () => null, sync() {}, stopAll() {} }),

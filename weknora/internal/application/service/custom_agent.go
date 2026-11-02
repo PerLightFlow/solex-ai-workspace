@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
@@ -44,6 +45,8 @@ type customAgentService struct {
 	tagRepo        interfaces.KnowledgeTagRepository
 	knowledgeRepo  interfaces.KnowledgeRepository
 	agentShareRepo interfaces.AgentShareRepository
+	builtinSeedMu  sync.Mutex
+	builtinSeeded  bool
 }
 
 // NewCustomAgentService creates a new custom agent service
@@ -71,6 +74,9 @@ func NewCustomAgentService(
 
 // CreateAgent creates a new custom agent
 func (s *customAgentService) CreateAgent(ctx context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
+	if types.IsSystemBuiltinAgentID(agent.ID) {
+		return nil, ErrCannotModifyBuiltin
+	}
 	// Validate required fields
 	if strings.TrimSpace(agent.Name) == "" {
 		return nil, ErrAgentNameRequired
@@ -139,6 +145,10 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 		return nil, ErrInvalidTenantID
 	}
 
+	if s.systemBuiltinCatalog() != nil && types.IsSystemBuiltinAgentID(id) {
+		return s.resolveSystemBuiltinAgent(ctx, id)
+	}
+
 	// Check if it's a built-in agent using the registry
 	if types.IsBuiltinAgentID(id) {
 		// Try to get from database first (for customized config)
@@ -176,6 +186,9 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 
 // GetAgentByIDAndTenant retrieves an agent by ID and tenant (for shared agents; does not resolve built-in)
 func (s *customAgentService) GetAgentByIDAndTenant(ctx context.Context, id string, tenantID uint64) (*types.CustomAgent, error) {
+	if s.systemBuiltinCatalog() != nil && types.IsSystemBuiltinAgentID(id) {
+		return s.resolveSystemBuiltinAgent(ctx, id)
+	}
 	if id == "" {
 		logger.Error(ctx, "Agent ID is empty")
 		return nil, errors.New("agent ID cannot be empty")
@@ -209,6 +222,22 @@ func (s *customAgentService) ListAgents(ctx context.Context) ([]*types.CustomAge
 	}
 
 	// Track which built-in agents exist in database
+	if s.systemBuiltinCatalog() != nil {
+		result, err := s.listSystemBuiltinAgents(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, agent := range allAgents {
+			if agent.IsBuiltin || types.IsSystemBuiltinAgentID(agent.ID) {
+				continue
+			}
+			agent.EnsureDefaults()
+			normalizeManagedAgentModels(ctx, &agent.Config)
+			result = append(result, agent)
+		}
+		return result, nil
+	}
+
 	builtinInDB := make(map[string]bool)
 	for _, agent := range allAgents {
 		agent.EnsureDefaults()
@@ -273,6 +302,9 @@ func (s *customAgentService) UpdateAgent(
 	}
 
 	// Handle built-in agents specially using registry
+	if s.systemBuiltinCatalog() != nil && types.IsSystemBuiltinAgentID(agent.ID) {
+		return nil, ErrCannotModifyBuiltin
+	}
 	if types.IsBuiltinAgentID(agent.ID) {
 		return s.updateBuiltinAgent(ctx, agent, tenantID)
 	}
@@ -444,6 +476,9 @@ func (s *customAgentService) DeleteAgent(ctx context.Context, id string) error {
 	}
 
 	// Cannot delete built-in agents using registry check
+	if types.ManagedRuntimeEnabled() && types.IsSystemBuiltinAgentID(id) {
+		return ErrCannotDeleteBuiltin
+	}
 	if types.IsBuiltinAgentID(id) {
 		return ErrCannotDeleteBuiltin
 	}

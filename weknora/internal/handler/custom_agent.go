@@ -761,6 +761,10 @@ func (h *CustomAgentHandler) saveAgentUpdate(c *gin.Context, id string, req Upda
 // @Router       /agents/{id} [delete]
 func (h *CustomAgentHandler) DeleteAgent(c *gin.Context) {
 	ctx := c.Request.Context()
+	if types.ManagedRuntimeEnabled() && types.IsSystemBuiltinAgentID(c.Param("id")) {
+		_ = c.Error(errors.NewForbiddenError("全局内置智能体只能由系统管理员在系统目录中移除"))
+		return
+	}
 
 	logger.Info(ctx, "Start deleting custom agent")
 

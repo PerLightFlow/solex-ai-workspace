@@ -58,6 +58,12 @@ class PrepareReleaseTests(unittest.TestCase):
         dockerfile = (self.output / 'app/Dockerfile').read_text()
         self.assertIn('FROM ' + release.APP_RUNTIME + '\n', dockerfile)
         self.assertIn('COPY WeKnora /app/WeKnora\n', dockerfile)
+        self.assertIn('COPY migrations/ /app/migrations/\n', dockerfile)
+        for dialect in ('versioned', 'sqlite'):
+            expected = {p.name: p.read_bytes() for p in (release.MIGRATIONS / dialect).glob('*.sql')}
+            packaged = {p.name: p.read_bytes() for p in (self.output / 'app/migrations' / dialect).glob('*.sql')}
+            self.assertTrue(expected)
+            self.assertEqual(expected, packaged, 'The runtime must receive source-matching migrations')
         self.assertNotIn('ENTRYPOINT', dockerfile)
         self.assertEqual((self.output / 'ui/Dockerfile').read_bytes(),
                          (release.UI_SOURCE / 'Dockerfile').read_bytes())

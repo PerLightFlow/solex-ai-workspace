@@ -1806,10 +1806,12 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 	if agentID != "" {
 		agent, err := s.agentService.GetAgentByID(sessionCtx, agentID)
 		if err != nil {
-			logger.Warnf(ctx, "[IM] Failed to get agent %s: %v, using default", agentID, err)
-		} else {
-			customAgent = agent
+			return fmt.Errorf("configured agent is unavailable: %w", err)
 		}
+		if agent == nil {
+			return fmt.Errorf("configured agent is unavailable")
+		}
+		customAgent = agent
 	}
 
 	// ── Slash-command dispatch ──

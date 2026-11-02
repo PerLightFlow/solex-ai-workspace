@@ -30,6 +30,7 @@ import {
   effectiveContextWindow,
 } from '@/utils/contextWindow';
 import { type CustomAgent, BUILTIN_QUICK_ANSWER_ID, BUILTIN_SMART_REASONING_ID } from '@/api/agent';
+import { resolveSelectedAgent, agentUsesSystemModels } from '@/config/systemAgents';
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities';
@@ -171,27 +172,9 @@ const selectedAgentId = computed({
   get: () => settingsStore.selectedAgentId || BUILTIN_QUICK_ANSWER_ID,
   set: (val: string) => settingsStore.selectAgent(val)
 });
-const selectedAgent = computed(() => {
-  // When a shared-agent source tenant is set, resolve from sharedAgents FIRST.
-  // Builtin agents (e.g. builtin-smart-reasoning) use the same constant ID across
-  // tenants, so falling back to agents.value first would incorrectly return the
-  // current tenant's own builtin instead of the shared one.
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (sourceTenantId && orgStore.sharedAgents?.length) {
-    const shared = orgStore.sharedAgents.find(
-      s => s.agent.id === selectedAgentId.value && String(s.source_tenant_id) === sourceTenantId
-    );
-    if (shared?.agent) return shared.agent as CustomAgent;
-  }
-  const mine = agents.value.find(a => a.id === selectedAgentId.value);
-  if (mine) return mine;
-  return {
-    id: BUILTIN_QUICK_ANSWER_ID,
-    name: t('input.normalMode'),
-    is_builtin: true,
-    config: { agent_mode: 'quick-answer' as const }
-  } as CustomAgent;
-});
+const selectedAgent = computed(() => resolveSelectedAgent(agents.value, selectedAgentId.value,
+  settingsStore.selectedAgentSourceTenantId, orgStore.sharedAgents || []));
+const selectedAgentMissing = computed(() => !props.embeddedMode && chatResources.isLoaded('agents') && !selectedAgent.value);
 const selectedSharedAgent = computed(() => {
   const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
   if (!sourceTenantId) return undefined;
@@ -2180,16 +2163,15 @@ const createSession = async (
     await loadChatModels()
   }
 
-  // 发送前校验当前选中的智能体（含默认快速问答）是否已配置完成
-  const agentToCheck = selectedAgent.value;
-  let actualAgent = agentToCheck;
-  if (agentToCheck.is_builtin && !settingsStore.selectedAgentSourceTenantId) {
-    let builtin = agents.value.find(a => a.id === selectedAgentId.value);
-    if (!builtin) {
-      await loadAgents();
-      builtin = agents.value.find(a => a.id === selectedAgentId.value);
-    }
-    actualAgent = builtin || agentToCheck;
+  // Refresh server-authoritative templates before sending: removal or edits in
+  // another admin's browser must not resurrect a local built-in fallback.
+  try { await chatResources.ensureAgents(true); }
+  catch { MessagePlugin.warning(t('systemAgents.loadFailed')); return; }
+  const actualAgent = selectedAgent.value;
+  if (!actualAgent) {
+    MessagePlugin.warning(t('systemAgents.removedNotice'));
+    showAgentModeSelector.value = true;
+    return;
   }
   const isAgentMode = actualAgent.config?.agent_mode === 'smart-reasoning';
   const { keys: notReadyKeys, labels: notReadyReasons } = collectAgentNotReadyReasons(
@@ -2206,6 +2188,9 @@ const createSession = async (
     );
     return;
   }
+  // The administrator can change a global template's mode while this composer
+  // stays open. Route the request using the freshly loaded template.
+  settingsStore.toggleAgent(isAgentMode);
   // 获取@提及的知识库和文件信息
   const mentionedItems: MentionRequestItem[] = allSelectedItems.value.map(item => ({
     id: item.id,
@@ -2325,9 +2310,7 @@ const toggleAgentModeSelector = () => {
 
   showAgentModeSelector.value = !showAgentModeSelector.value;
   if (showAgentModeSelector.value) {
-    if (!chatResources.isLoaded('agents')) {
-      void loadAgents(true);
-    }
+    void loadAgents(true);
     // 多次更新位置确保准确
     nextTick(() => {
       updateAgentModeDropdownPosition();
@@ -2348,6 +2331,11 @@ const selectAgentMode = async (mode: 'quick-answer' | 'smart-reasoning') => {
 
   const builtinAgentId = mode === 'smart-reasoning' ? BUILTIN_SMART_REASONING_ID : BUILTIN_QUICK_ANSWER_ID;
   const builtinAgent = agents.value.find(a => a.id === builtinAgentId);
+
+  if (!builtinAgent) {
+    MessagePlugin.warning(t('systemAgents.removedNotice'));
+    return;
+  }
 
   if (builtinAgent) {
     const { keys: notReadyKeys, labels: notReadyReasons } = collectAgentNotReadyReasons(
@@ -2602,7 +2590,7 @@ const collectAgentNotReadyReasons = (
   const keys = getAgentNotReadyReasonKeys(agent.config, allModels.value, {
     isAgentMode,
     isSharedAgent,
-  }).filter(key => !managedRuntime.value || !['summary_model', 'rerank_model'].includes(key));
+  }).filter(key => !agentUsesSystemModels(agent, deploymentCapabilities.managedRuntime, managedRuntime.value) || !['summary_model', 'rerank_model'].includes(key));
   return {
     keys,
     labels: formatAgentNotReadyReasons(keys, agent.is_builtin),
@@ -2845,6 +2833,7 @@ defineExpose({
         </span>
       </div>
 
+      <t-alert v-if="selectedAgentMissing" theme="warning" :message="$t('systemAgents.removedNotice')" />
       <!-- 实际输入框 -->
       <t-textarea ref="textareaRef" v-model="query" :placeholder="t('input.placeholder')" name="description" :autosize="true"
         @keydown="onKeydown" @input="onInput" @compositionstart="onCompositionStart" @compositionend="onCompositionEnd"
@@ -2863,7 +2852,7 @@ defineExpose({
             'is-custom': isCustomAgent
           }" @click.stop="toggleAgentModeSelector">
             <span class="agent-mode-text">
-              {{ selectedAgent.name || (isAgentEnabled ? $t('input.agentMode') : $t('input.normalMode')) }}
+              {{ selectedAgent?.name || $t('systemAgents.chooseAgent') }}
             </span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" class="dropdown-arrow"
               :class="{ 'rotate': showAgentModeSelector }">

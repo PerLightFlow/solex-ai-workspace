@@ -154,6 +154,8 @@ export interface CustomAgent {
   description?: string;
   avatar?: string;
   is_builtin: boolean;
+  /** Internal system workflows are managed separately from chat choices. */
+  is_internal?: boolean;
   tenant_id?: number;
   created_by?: string;
   // creator_name 由后端 list 接口批量回填，仅用于列表卡片来源徽章。
@@ -241,6 +243,30 @@ export function updateAgent(id: string, data: UpdateAgentRequest) {
 // 删除智能体
 export function deleteAgent(id: string) {
   return del<{ success: boolean }>(`/api/v1/agents/${id}`);
+}
+
+// Platform-wide agents are separate from workspace-owned custom agents.
+export function listSystemAgents() {
+  return get<{ data: CustomAgent[] }>('/api/v1/system/builtin-agents').then(response => {
+    if (Array.isArray(response.data)) response.data = response.data.map(brandBuiltinAgent);
+    return response;
+  });
+}
+
+export function getSystemAgent(id: string) {
+  return get<{ data: CustomAgent }>(`/api/v1/system/builtin-agents/${encodeURIComponent(id)}`).then(brandAgentResponse);
+}
+
+export function createSystemAgent(data: CreateAgentRequest) {
+  return post<{ data: CustomAgent }>('/api/v1/system/builtin-agents', data).then(brandAgentResponse);
+}
+
+export function updateSystemAgent(id: string, data: UpdateAgentRequest) {
+  return put<{ data: CustomAgent }>(`/api/v1/system/builtin-agents/${encodeURIComponent(id)}`, data).then(brandAgentResponse);
+}
+
+export function deleteSystemAgent(id: string) {
+  return del<{ success: boolean }>(`/api/v1/system/builtin-agents/${encodeURIComponent(id)}`);
 }
 
 // 复制智能体

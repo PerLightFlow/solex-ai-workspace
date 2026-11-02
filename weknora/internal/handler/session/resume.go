@@ -254,7 +254,9 @@ func (h *Handler) buildResumeRequest(
 func sharedSourceTenant(session *types.Session, req types.ResumableAgentRequest) uint64 {
 	// Built-ins are never shared agents. A different tenant can only be the
 	// execution scope of a shared KB, which must be revalidated separately.
-	if types.IsBuiltinAgentID(req.AgentID) || req.AgentTenantID == 0 || req.AgentTenantID == session.TenantID {
+	if types.IsBuiltinAgentID(req.AgentID) ||
+		(types.ManagedRuntimeEnabled() && types.IsSystemBuiltinAgentID(req.AgentID)) ||
+		req.AgentTenantID == 0 || req.AgentTenantID == session.TenantID {
 		return 0
 	}
 	return req.AgentTenantID
