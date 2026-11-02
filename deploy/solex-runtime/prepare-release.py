@@ -23,7 +23,7 @@ PROMPT_FILES = (
 )
 APP_RUNTIME = 'wechatopenai/weknora-app@sha256:25b20959b7456f7842ef55ed4feff3694dbd0c6f8af4117c1fb3c5dec6bdf14d'
 UI_RUNTIME = 'wechatopenai/weknora-ui@sha256:df26705d866997db07f3da78dabedc4f594b383566a3996810c166a5c6bee393'
-SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py')
+SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py', 'attribution_check.py')
 EVIDENCE = ('go-build-info.txt', 'runtime-libraries.txt', 'WeKnora.sha256')
 
 
@@ -146,11 +146,11 @@ def prepare(backend_dir, dist, destination, revision):
             if not re.fullmatch(r'[0-9]{6}_[a-zA-Z0-9_]+\.(up|down)\.sql', script.name):
                 raise ValueError('Unexpected migration filename')
             migration_files.append(script)
-    for dialect, expected in (('versioned', 135), ('sqlite', 52)):
+    for dialect, expected in (('versioned', 136), ('sqlite', 53)):
         versions = [int(p.name[:6]) for p in migration_files if p.parent.name == dialect]
         if max(versions) != expected:
             raise ValueError('Reassess schema rollback compatibility before packaging changed migrations')
-        plain_file(MIGRATIONS / dialect / f'{expected:06d}_system_builtin_agents.up.sql')
+        plain_file(MIGRATIONS / dialect / f'{expected:06d}_knowledge_provenance.up.sql')
     suffix = revision[:12]
     metadata = {
         'release_id': 'solex-runtime-' + suffix,
@@ -162,10 +162,10 @@ def prepare(backend_dir, dist, destination, revision):
         'backend_sha256': binary_hash,
         'dist_sha256': dist_hash,
         'build_tags': ['anydoc'],
-        # This release only adds the system catalog table. Reassess this
+        # This release adds document attribution columns. Reassess this
         # compatibility declaration before shipping other schema changes.
-        'postgres_schema_before': 134,
-        'postgres_schema_after': 135,
+        'postgres_schema_before': 135,
+        'postgres_schema_after': 136,
     }
     destination.mkdir(mode=0o700)
     app, ui, evidence = destination / 'app', destination / 'ui', destination / 'build-evidence'

@@ -11,6 +11,7 @@ import enUS from '../../../i18n/locales/en-US'
 import * as files from '../../../utils/files.ts'
 import * as referenceSources from '../../../utils/referenceSources.ts'
 import * as processingStall from '../../../utils/knowledgeProcessingStall.ts'
+import * as attribution from '../../../utils/knowledgeAttribution.ts'
 
 /**
  * The document list and card grid are rendered for real here: the SFC is
@@ -61,6 +62,12 @@ function evaluateModule(source: string, dependencies: Record<string, unknown>): 
   return exports
 }
 
+const attributionFile = new URL('../../../components/DocumentAttribution.vue', import.meta.url)
+const attributionDescriptor = parse(readFileSync(attributionFile, 'utf8'), { filename: attributionFile.pathname }).descriptor
+const attributionComponent = evaluateModule(compileScript(attributionDescriptor, { id: 'attribution-test', inlineTemplate: true }).content, {
+  vue, 'vue-i18n': vueI18n, '@/utils/knowledgeAttribution': attribution,
+}).default
+
 const componentCache = new Map<string, any>()
 
 function loadView(file: URL, extraDependencies: Record<string, unknown> = {}): any {
@@ -75,6 +82,7 @@ function loadView(file: URL, extraDependencies: Record<string, unknown> = {}): a
     '@/utils/files': files,
     '@/utils/referenceSources': referenceSources,
     '@/utils/knowledgeProcessingStall': processingStall,
+    '@/components/DocumentAttribution.vue': attributionComponent,
     './KnowledgeTagPopover.vue': noopComponent,
     './DocumentFileIcon.vue': noopComponent,
     './DocumentActionMenu.vue': noopComponent,
@@ -320,3 +328,27 @@ test('an absent folder list renders no folder rows and does not crash', () => {
     cards.unmount()
   }
 })
+
+
+for (const [name, mount] of [['list', mountList], ['cards', mountCards]] as const) {
+  test(`${name} shows upload and manual edit attribution without using background timestamps`, () => {
+    const view = mount({ items: [{ ...documents[0], created_by_name: 'Alice', created_at: '2026-01-01T00:00:00Z',
+      last_modified_by_name: 'Bob', last_modified_at: '2026-02-01T00:00:00Z', updated_at: '2099-01-01T00:00:00Z' }] })
+    try {
+      const text = textOf(view.root)
+      assert.match(text, /Uploaded byAlice/)
+      assert.match(text, /Uploaded at2026-/)
+      assert.match(text, /Last modified byBob/)
+      assert.match(text, /Last modified at2026-/)
+      assert.doesNotMatch(text, /2099/)
+    } finally { view.unmount() }
+  })
+  test(`${name} does not use private account IDs when names are absent`, () => {
+    const view = mount({ items: [{ ...documents[0], created_by: 'private-account-id', last_modified_by: 'private-editor-id' }] })
+    try {
+      const text = textOf(view.root)
+      assert.match(text, /Not recorded/)
+      assert.doesNotMatch(text, /private-account-id|private-editor-id/)
+    } finally { view.unmount() }
+  })
+}

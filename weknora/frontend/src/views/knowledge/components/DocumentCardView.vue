@@ -10,8 +10,10 @@ import FolderPickerMenu, { type FolderOption } from './FolderPickerMenu.vue';
 import KnowledgeProcessingTimeline from '@/components/knowledge-processing-timeline.vue';
 import { shownStall } from '@/utils/knowledgeProcessingStall';
 import type { FolderEntry } from '../folderTree';
+import DocumentAttribution from '@/components/DocumentAttribution.vue';
+import type { KnowledgeAttribution } from '@/utils/knowledgeAttribution';
 
-interface KnowledgeCard {
+interface KnowledgeCard extends KnowledgeAttribution {
   id: string;
   knowledge_base_id?: string;
   parse_status: string;
@@ -613,8 +615,9 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
           <t-icon name="folder" />
           <span>{{ item.folder_path }}</span>
         </button>
-        <span v-else class="card-time" :title="t('knowledgeBase.columnUpdatedAt')">{{ formatDocTime(item.updated_at) }}</span>
+
       </div>
+      <DocumentAttribution :document="item" compact />
     </div>
       </div>
     </section>
@@ -663,7 +666,7 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
           </div>
         </template>
         <div class="card-popover-meta">
-          <span class="card-popover-time">{{ $t('knowledgeBase.updatedAt') }}：{{ formatDocTime(hoveredCardItem.updated_at) }}</span>
+          <DocumentAttribution :document="hoveredCardItem" compact />
           <span
             v-if="(hoveredCardItem as any).channel && (hoveredCardItem as any).channel !== 'web'"
             class="card-popover-channel"

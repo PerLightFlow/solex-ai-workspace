@@ -148,6 +148,12 @@ func (s *auditLogService) List(
 	return s.repo.List(ctx, tenantID, q)
 }
 
+func (s *auditLogService) ListKnowledgeActivity(
+	ctx context.Context, tenantID uint64, kbID, knowledgeID string, afterID uint64, limit int,
+) ([]*types.KnowledgeActivity, error) {
+	return s.repo.ListKnowledgeActivity(ctx, tenantID, kbID, knowledgeID, afterID, limit)
+}
+
 // Purge deletes rows whose created_at is strictly older than
 // `retentionDays` ago. retentionDays <= 0 short-circuits — operators
 // who configured no retention pay zero database round-trips.

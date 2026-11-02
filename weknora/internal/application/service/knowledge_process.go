@@ -3597,7 +3597,7 @@ func (s *knowledgeService) UpdateImageInfo(
 
 	// Update the chunks
 	for _, c := range updateChunk {
-		err := s.chunkRepo.UpdateChunk(ctx, c)
+		err := s.chunkRepo.UpdateChunk(types.WithKnowledgeUserMutation(ctx), c)
 		if err != nil {
 			logger.ErrorWithFields(ctx, err, map[string]interface{}{
 				"chunk_id":     c.ID,
@@ -3606,6 +3606,7 @@ func (s *knowledgeService) UpdateImageInfo(
 			return err
 		}
 	}
+	recordKnowledgeUpdated(ctx, s.audit, knowledge, "chunks")
 
 	// Update the chunk vector
 	err = s.updateChunkVector(ctx, chunk.KnowledgeBaseID, append(updateChunk, addChunk...))

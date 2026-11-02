@@ -731,12 +731,17 @@ func (s *knowledgeService) MoveKnowledgeToFolder(ctx context.Context,
 		ids = append(ids, row.ID)
 	}
 	tenantID := rows[0].TenantID
-	affected, err := s.repo.UpdateKnowledgeFolderPath(ctx, tenantID, kbID, ids, normalized)
+	affected, err := s.repo.UpdateKnowledgeFolderPath(types.WithKnowledgeUserMutation(ctx), tenantID, kbID, ids, normalized)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to move knowledge to folder %q: %v", normalized, err)
 		return 0, err
 	}
 	logger.Infof(ctx, "Moved %d knowledge entries to folder %q in kb %s", affected, normalized, kbID)
+	for _, row := range rows {
+		if row.FolderPath != normalized {
+			recordKnowledgeUpdated(ctx, s.audit, row, "folder_path")
+		}
+	}
 	return affected, nil
 }
 
@@ -777,13 +782,25 @@ func (s *knowledgeService) RenameKnowledgeFolder(ctx context.Context,
 		return 0, err
 	}
 	tenantID := kb.TenantID
-	affected, err := s.repo.RenameKnowledgeFolderPath(ctx, tenantID, kbID, source, target)
+	var rows []*types.Knowledge
+	if s.audit != nil {
+		rows, err = s.repo.ListKnowledgeByKnowledgeBaseID(ctx, tenantID, kbID)
+		if err != nil {
+			return 0, err
+		}
+	}
+	affected, err := s.repo.RenameKnowledgeFolderPath(types.WithKnowledgeUserMutation(ctx), tenantID, kbID, source, target)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to rename folder %q to %q: %v", source, target, err)
 		return 0, err
 	}
 	logger.Infof(ctx, "Renamed folder %q to %q in kb %s, %d entries affected",
 		source, target, kbID, affected)
+	for _, row := range rows {
+		if row.FolderPath == source || strings.HasPrefix(row.FolderPath, source+"/") {
+			recordKnowledgeUpdated(ctx, s.audit, row, "folder_path")
+		}
+	}
 	return affected, nil
 }
 
@@ -846,6 +863,7 @@ func (s *knowledgeService) UpdateKnowledge(ctx context.Context, knowledge *types
 		logger.Errorf(ctx, "Failed to get knowledge record: %v", err)
 		return err
 	}
+	before := *record
 	// if need other fields update, please add here
 	if knowledge.Title != "" {
 		record.Title = knowledge.Title
@@ -887,11 +905,26 @@ func (s *knowledgeService) UpdateKnowledge(ctx context.Context, knowledge *types
 		record.CustomMetadata = knowledge.CustomMetadata
 	}
 
-	// Update knowledge record in the repository
-	if err := s.repo.UpdateKnowledge(ctx, record); err != nil {
+	fields := make([]string, 0, 3)
+	if before.Title != record.Title {
+		fields = append(fields, "title")
+	}
+	if before.Description != record.Description {
+		fields = append(fields, "description")
+	}
+	if metadataChanged {
+		fields = append(fields, "custom_metadata")
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	// Save attribution with the mutation; asynchronous refreshes use the
+	// original context and cannot overwrite these user-owned timestamps.
+	if err := s.repo.UpdateKnowledge(types.WithKnowledgeUserMutation(ctx), record); err != nil {
 		logger.Errorf(ctx, "Failed to update knowledge: %v", err)
 		return err
 	}
+	recordKnowledgeUpdated(ctx, s.audit, record, fields...)
 	if metadataChanged && record.SummaryStatus != "" && record.SummaryStatus != types.SummaryStatusNone {
 		if err := enqueueSummaryRefresh(ctx, s.repo, s.task, s.kbService, s.tracker(), record); err != nil {
 			logger.Warnf(ctx, "Metadata saved but summary refresh enqueue failed for %s: %v", record.ID, err)
@@ -1072,7 +1105,11 @@ func (s *knowledgeService) UpdateKnowledgeTag(ctx context.Context, knowledgeID s
 		return err
 	}
 
-	return s.repo.SetKnowledgeTags(ctx, knowledgeID, tagIDs)
+	if err := s.repo.SetKnowledgeTags(types.WithKnowledgeUserMutation(ctx), knowledgeID, tagIDs); err != nil {
+		return err
+	}
+	recordKnowledgeUpdated(ctx, s.audit, knowledge, "tags")
+	return nil
 }
 
 // UpdateKnowledgeTagBatch updates tags for document knowledge items in batch.
@@ -1157,10 +1194,11 @@ func (s *knowledgeService) UpdateKnowledgeTagBatch(
 	}
 
 	// Set tags for each knowledge
-	for _, knowledgeID := range knowledgeIDs {
-		if err := s.repo.SetKnowledgeTags(ctx, knowledgeID, updates[knowledgeID]); err != nil {
+	for _, knowledge := range knowledgeList {
+		if err := s.repo.SetKnowledgeTags(types.WithKnowledgeUserMutation(ctx), knowledge.ID, updates[knowledge.ID]); err != nil {
 			return err
 		}
+		recordKnowledgeUpdated(ctx, s.audit, knowledge, "tags")
 	}
 
 	return nil

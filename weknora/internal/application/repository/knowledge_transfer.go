@@ -23,6 +23,15 @@ func (r *knowledgeRepository) UpdateKnowledgeForTransfer(ctx context.Context, be
 	after.UpdatedAt = time.Now().UTC().Truncate(time.Microsecond)
 	var storedUpdatedAt time.Time
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		columns := map[string]interface{}{
+			"knowledge_base_id": after.KnowledgeBaseID, "parse_status": after.ParseStatus,
+			"metadata": after.Metadata, "storage_size": after.StorageSize, "updated_at": after.UpdatedAt,
+			"enable_status": after.EnableStatus, "embedding_model_id": after.EmbeddingModelID,
+			"description": after.Description, "processed_at": after.ProcessedAt, "error_message": after.ErrorMessage,
+		}
+		if before.KnowledgeBaseID != after.KnowledgeBaseID {
+			columns = (&knowledgeRepository{db: tx}).mutationColumns(types.WithKnowledgeUserMutation(ctx), columns)
+		}
 		result := tx.Model(&types.Knowledge{}).
 			Where("id = ? AND tenant_id = ? AND knowledge_base_id = ? AND parse_status = ? AND "+
 				"updated_at = ?",
@@ -31,14 +40,7 @@ func (r *knowledgeRepository) UpdateKnowledgeForTransfer(ctx context.Context, be
 				before.KnowledgeBaseID,
 				before.ParseStatus,
 				before.UpdatedAt).
-			Updates(map[string]any{
-				"knowledge_base_id": after.KnowledgeBaseID, "parse_status": after.ParseStatus,
-				"metadata": after.Metadata, "storage_size": after.StorageSize, "updated_at": after.UpdatedAt,
-				"enable_status": after.EnableStatus, "embedding_model_id": after.EmbeddingModelID,
-				"description":   after.Description,
-				"processed_at":  after.ProcessedAt,
-				"error_message": after.ErrorMessage,
-			})
+			Updates(columns)
 		if result.Error != nil {
 			return result.Error
 		}

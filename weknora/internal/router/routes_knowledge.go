@@ -304,15 +304,20 @@ func RegisterImageAttrRoutes(r *gin.RouterGroup, handler *handler.KnowledgeBaseH
 		apiKeyRetrieve(apiKeyFullAccess()), g.Viewer(), handler.ValidateImagePipelines)
 }
 
-// RegisterKnowledgeBaseActivityRoutes exposes the read-only per-KB activity
-// feed. It intentionally stays JWT-only: audit history is a sensitive owner
-// surface and no existing workspace API-key capability grants audit access.
+// RegisterKnowledgeBaseActivityRoutes exposes the owner-only KB audit feed
+// and its separate safe document projection. The full KB feed stays JWT-only;
+// the document projection follows the same read guard as document details.
 func RegisterKnowledgeBaseActivityRoutes(r *gin.RouterGroup, auditHandler *handler.AuditLogHandler, g *rbacGuards) {
 	if auditHandler == nil {
 		return
 	}
 	r.GET("/knowledge-bases/:id/activity",
 		g.OwnedKBOrAdmin(), g.KBAccessRead("id"), auditHandler.ListKnowledgeBaseActivity)
+	// A document reader may inspect its safe attribution/change projection;
+	// this does not grant access to the owning KB's administrative audit feed.
+	g.apiKeyRoute(r, http.MethodGet, "/knowledge/:id/activity",
+		apiKeyRetrieve(apiKeyFullAccess()), g.Viewer(),
+		g.KBAccessReadFromKnowledgeIDParam("id"), auditHandler.ListKnowledgeActivity)
 }
 
 // RegisterKnowledgeTagRoutes 注册知识库标签相关路由。

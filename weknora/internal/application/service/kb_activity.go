@@ -132,6 +132,15 @@ func recordKBActivity(
 	for key, value := range details {
 		activityDetails[key] = value
 	}
+	// Snapshot authenticated display names only. Never accept client-provided
+	// attribution or expose email addresses in the activity stream.
+	actorID, actorName := types.KnowledgeActor(ctx)
+	activityDetails["actor_name"] = actorName
+	if actorID != "" {
+		activityDetails["actor_kind"] = "user"
+	} else {
+		activityDetails["actor_kind"] = "system"
+	}
 	if id, name, ok := kbActivityAPIKey(ctx); ok {
 		if _, exists := activityDetails["api_key_id"]; !exists && id > 0 {
 			activityDetails["api_key_id"] = id
@@ -191,7 +200,6 @@ func recordKBActivity(
 			detailJSON = types.JSON(b)
 		}
 	}
-	actorID := auditActor(ctx)
 	actorRole := ""
 	if actorID != "" {
 		actorRole = auditActorRole(ctx)

@@ -46,7 +46,7 @@ class RuntimeReleaseTests(unittest.TestCase):
             root = Path(directory)
             scripts = root / 'source/app/migrations/versioned'
             scripts.mkdir(parents=True)
-            migration = scripts / '000135_system_builtin_agents.up.sql'
+            migration = scripts / '000136_knowledge_provenance.up.sql'
             migration.write_text('CREATE TABLE IF NOT EXISTS example (id text);')
             state = root / 'state'
             state.mkdir()
@@ -60,13 +60,13 @@ class RuntimeReleaseTests(unittest.TestCase):
             command.assert_called_once()
 
     def test_schema_validation_does_not_accept_health_alone(self):
-        for state in ({'version': 134, 'dirty': False}, {'version': 135, 'dirty': True}):
+        for state in ({'version': 135, 'dirty': False}, {'version': 136, 'dirty': True}):
             with patch('deploy.sql', return_value=json.dumps(state)):
                 with self.assertRaisesRegex(RuntimeError, 'schema version'):
-                    verify_migrations(135)
-        with patch('deploy.sql', return_value='{"version":135,"dirty":false}'), patch('deploy.Client') as client, patch('deploy.Path.read_text', return_value='{}'):
+                    verify_migrations(136)
+        with patch('deploy.sql', return_value='{"version":136,"dirty":false}'), patch('deploy.Client') as client, patch('deploy.Path.read_text', return_value='{}'):
             client.return_value.call.return_value = {'data': {'db_migration_failed': True}}
             with self.assertRaisesRegex(RuntimeError, 'migration failure'):
-                verify_migrations(135)
+                verify_migrations(136)
 
 if __name__ == '__main__': unittest.main()

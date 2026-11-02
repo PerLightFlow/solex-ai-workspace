@@ -118,9 +118,9 @@ def deploy():
         configured = command('docker','image','inspect','--format','{{.Id}}',settings[key])
         if running != configured: raise RuntimeError('Saved image setting differs from the running service')
     schema_before = json.loads(sql("SELECT json_build_object('version',version,'dirty',dirty) FROM schema_migrations;"))
-    if (meta.get('postgres_schema_before'), meta.get('postgres_schema_after')) != (134, 135):
+    if (meta.get('postgres_schema_before'), meta.get('postgres_schema_after')) != (135, 136):
         raise RuntimeError('This release requires an explicitly reviewed additive schema transition')
-    if schema_before.get('dirty') or schema_before.get('version') not in (134, 135):
+    if schema_before.get('dirty') or schema_before.get('version') not in (135, 136):
         raise RuntimeError('Unexpected pre-release database schema; migration review required')
     rollback_image = prepare_rollback_image(state_dir, settings['WEKNORA_APP_IMAGE'], release_id)
     rollback_env = replace_env(old_env, {'WEKNORA_APP_IMAGE': rollback_image})

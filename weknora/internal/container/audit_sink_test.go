@@ -26,6 +26,9 @@ func (f *fakeAuditSvc) LogDenied(context.Context, *gin.Context, uint64, string, 
 func (f *fakeAuditSvc) List(context.Context, uint64, *interfaces.AuditLogQuery) ([]*types.AuditLog, error) {
 	return nil, nil
 }
+func (f *fakeAuditSvc) ListKnowledgeActivity(context.Context, uint64, string, string, uint64, int) ([]*types.KnowledgeActivity, error) {
+	return nil, nil
+}
 func (f *fakeAuditSvc) Purge(context.Context, int) (int64, error) { return 0, nil }
 
 func ctxWithTenant(id uint64) context.Context {

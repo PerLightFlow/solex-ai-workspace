@@ -417,7 +417,7 @@ func (h *ChunkHandler) DeleteChunk(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteChunk(ctx, chunk.ID); err != nil {
+	if err := h.service.DeleteChunk(types.WithKnowledgeUserMutation(ctx), chunk.ID); err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return
@@ -452,7 +452,7 @@ func (h *ChunkHandler) DeleteChunksByKnowledgeID(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteChunksByKnowledgeID(ctx, knowledgeID); err != nil {
+	if err := h.service.DeleteChunksByKnowledgeID(types.WithKnowledgeUserMutation(ctx), knowledgeID); err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return

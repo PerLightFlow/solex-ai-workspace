@@ -1,6 +1,7 @@
 import { ref, reactive } from "vue";
 import { storeToRefs } from "pinia";
 import { formatStringDate } from "../utils/index";
+import { pickKnowledgeAttribution } from "../utils/knowledgeAttribution";
 import {
   listKnowledgeFiles,
   getKnowledgeDetails,
@@ -18,6 +19,7 @@ export default function (knowledgeBaseId?: string) {
   const { cardList, total } = storeToRefs(usemenuStore);
   let moreIndex = ref(-1);
   const details = reactive({
+    ...pickKnowledgeAttribution(),
     title: "",
     time: "",
     md: [] as any[],
@@ -95,6 +97,7 @@ export default function (knowledgeBaseId?: string) {
     activeKnowledgeId = item.id;
     chunkRequestGeneration++;
     Object.assign(details, {
+      ...pickKnowledgeAttribution(),
       title: "",
       time: "",
       md: [],
@@ -117,6 +120,7 @@ export default function (knowledgeBaseId?: string) {
         if (result.success && result.data) {
           const { data } = result;
           Object.assign(details, {
+            ...pickKnowledgeAttribution(data),
             title: data.file_name || data.title || data.source || t('knowledgeBase.untitledDocument'),
             time: formatStringDate(new Date(data.updated_at)),
             id: data.id,

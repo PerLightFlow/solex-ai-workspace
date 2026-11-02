@@ -7,6 +7,29 @@ export { buildListKnowledgeFilesQuery } from './knowledgeFileListQuery';
 
 export type KnowledgeBaseActivity = AuditLog;
 
+export interface KnowledgeActivity {
+  id: number;
+  action: string;
+  actor_name: string;
+  actor_kind: 'user' | 'system' | 'unknown';
+  created_at: string;
+  changed_fields: string[];
+}
+export interface KnowledgeActivityResponse {
+  success: boolean;
+  data: KnowledgeActivity[];
+  next_cursor: number;
+}
+
+/** File-scoped activity; this does not grant access to configuration audit logs. */
+export function listKnowledgeActivity(id: string, params: { after_id?: number; limit?: number } = {}) {
+  const query = new URLSearchParams();
+  if (params.after_id) query.set('after_id', String(params.after_id));
+  if (params.limit) query.set('limit', String(params.limit));
+  const suffix = query.toString();
+  return get<KnowledgeActivityResponse>(`/api/v1/knowledge/${encodeURIComponent(id)}/activity${suffix ? `?${suffix}` : ''}`);
+}
+
 export interface ListKnowledgeBaseActivityParams {
   after_id?: number;
   limit?: number;

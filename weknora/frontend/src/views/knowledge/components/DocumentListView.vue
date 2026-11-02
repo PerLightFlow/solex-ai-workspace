@@ -8,6 +8,8 @@ import DocumentActionMenu from './DocumentActionMenu.vue';
 import FolderPickerMenu, { type FolderOption } from './FolderPickerMenu.vue';
 import { shownStall } from '@/utils/knowledgeProcessingStall';
 import type { FolderEntry } from '../folderTree';
+import DocumentAttribution from '@/components/DocumentAttribution.vue';
+import type { KnowledgeAttribution } from '@/utils/knowledgeAttribution';
 
 interface Tag {
   id: string;
@@ -15,7 +17,7 @@ interface Tag {
   color?: string;
 }
 
-interface KnowledgeItem {
+interface KnowledgeItem extends KnowledgeAttribution {
   id: string;
   file_name: string;
   original_file_name?: string;
@@ -88,18 +90,6 @@ const { t } = useI18n();
 const tagEditorId = ref<string | null>(null);
 const subFolderRows = computed(() => props.subFolders || []);
 const openFolder = (folder: FolderEntry) => emit('open-folder', folder.path);
-
-const formatTime = (time?: string) => {
-  if (!time) return '--';
-  const d = new Date(time);
-  if (Number.isNaN(d.getTime())) return '--';
-  const yy = String(d.getFullYear()).slice(2);
-  const MM = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${yy}-${MM}-${dd} ${hh}:${mm}`;
-};
 
 const getSourceInfo = (item: KnowledgeItem): { icon: string; label: string } => {
   const ch = item.channel;
@@ -339,9 +329,9 @@ const handleAction = (action: 'download' | 'edit' | 'reparse' | 'cancel-parse' |
                 <span class="meta-sep" aria-hidden="true">·</span>
                 <span>{{ formatFileSize(item.file_size) }}</span>
               </template>
-              <span class="meta-sep" aria-hidden="true">·</span>
-              <span :title="t('knowledgeBase.columnUpdatedAt')">{{ formatTime(item.updated_at) }}</span>
+
             </span>
+            <DocumentAttribution :document="item" compact />
             <button v-if="showFolderPath && item.folder_path" type="button" class="row-file-folder"
               :title="item.folder_path" @click.stop="emit('open-folder', item.folder_path)">
               <t-icon name="folder" />

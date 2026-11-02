@@ -4,6 +4,7 @@ import secrets
 import time
 from api_client import ROOT, Client, ApiError, save_json
 from stream_check import check_stream
+from attribution_check import check_document_attribution
 
 
 def expect_forbidden(client, method, path, data=None):
@@ -159,6 +160,7 @@ def run(state_dir):
             'disable_keywords_match':True, 'rerank':{'enabled':False}})['data']
         if not hits or not any('ESP32-P4' in hit.get('content','') for hit in hits):
             raise RuntimeError('Ordinary shared-embedding vector retrieval failed')
+        attribution = check_document_attribution(admin, client, state, user_id, tenant_id, kb_id, document)
         # Shared runtime must not imply shared private agents or knowledge bases.
         other_agents = admin.call('GET', '/agents')['data']
         if isinstance(other_agents, dict):
@@ -171,6 +173,7 @@ def run(state_dir):
         chat = check_stream(client, agent_id=agent_id)
         catalog = check_builtin_catalog(admin, client, kb_id)
         result = {'passed': True, 'time': time.time(), 'ordinary_registration': True,
+            'document_attribution': attribution,
             'default_models_inherited': True, 'search_provider_inherited': True, 'configuration_writes_forbidden': True,
             'create_agent_without_model': True, 'create_kb_without_model': True, 'ordinary_upload_and_vector_retrieval':True,
             'personal_workspace_list_isolation': True, 'chat_stream': chat, 'system_agent_catalog': catalog,

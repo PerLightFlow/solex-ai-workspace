@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import test, { type TestContext } from 'node:test'
 import * as vue from 'vue'
 import * as pinia from 'pinia'
+import * as attribution from '../utils/knowledgeAttribution'
+import * as listQuery from '../api/knowledge-base/knowledgeFileListQuery'
 import { fixture, flush } from '../test-utils/vueFixture.ts'
 
 type Request = {
@@ -26,7 +28,7 @@ function setup(t: TestContext) {
       }),
       put,
     },
-    './knowledgeFileListQuery': {},
+    './knowledgeFileListQuery': listQuery,
   })
   const stores = f.evaluate(readFileSync(new URL('../stores/knowledge.ts', import.meta.url), 'utf8'), { vue, pinia })
   const root = pinia.createPinia()
@@ -35,6 +37,7 @@ function setup(t: TestContext) {
   const { default: useKnowledgeBase } = f.evaluate(readFileSync(new URL('./useKnowledgeBase.ts', import.meta.url), 'utf8'), {
     vue, pinia,
     '../utils/index': { formatStringDate: (date: Date) => date.toISOString() },
+    '../utils/knowledgeAttribution': attribution,
     '@/api/knowledge-base/index': api,
     '@/stores/knowledge': stores,
     'vue-router': { useRoute: () => ({ params: { kbId: 'kb' } }) },
@@ -133,4 +136,44 @@ test('a rejected old metadata request leaves the current document intact', async
   await flush()
   assert.equal(hook.details.id, 'b')
   assert.equal(hook.details.title, 'b-current.pdf')
+})
+
+
+test('document mapping carries provenance and clears it before loading another file', async t => {
+  const { hook, metadata } = setup(t)
+  hook.getCardDetails({ id: 'a' })
+  const response = detail('a')
+  Object.assign(response.data, { created_by: 'user-1', created_by_name: 'Alice', created_at: '2026-02-01T00:00:00Z',
+    last_modified_by: 'user-2', last_modified_by_name: 'Bob', last_modified_at: '2026-03-01T00:00:00Z', updated_at: '2099-01-01T00:00:00Z' })
+  metadata[0].resolve(response)
+  await flush()
+  assert.equal(hook.details.created_by_name, 'Alice')
+  assert.equal(hook.details.last_modified_by_name, 'Bob')
+  assert.equal(hook.details.last_modified_at, '2026-03-01T00:00:00Z')
+  hook.getCardDetails({ id: 'b' })
+  assert.equal(hook.details.created_by_name, '')
+  assert.equal(hook.details.last_modified_at, null)
+  metadata[1].resolve(detail('b'))
+  await flush()
+  assert.equal(hook.details.last_modified_at, null, 'background updated_at must not become a human edit time')
+})
+
+test('file list mapping preserves provenance fields from the response', async t => {
+  const { hook, metadata } = setup(t)
+  const pending = hook.getKnowled({ page: 1, page_size: 20 }, 'kb')
+  metadata[0].resolve({ success: true, total: 1, data: [{ ...detail('a').data,
+    created_by_name: 'Uploader', created_at: '2026-02-01T00:00:00Z',
+    last_modified_by_name: 'Editor', last_modified_at: '2026-03-01T00:00:00Z' }] })
+  await pending
+  assert.equal(hook.cardList.value[0].created_by_name, 'Uploader')
+  assert.equal(hook.cardList.value[0].last_modified_by_name, 'Editor')
+  assert.equal(hook.cardList.value[0].last_modified_at, '2026-03-01T00:00:00Z')
+})
+
+test('file activity uses its own read-scoped endpoint with an encoded ID and cursor', async t => {
+  const { api, metadata } = setup(t)
+  const pending = api.listKnowledgeActivity('file /a', { after_id: 42, limit: 20 })
+  assert.equal(metadata[0].url, '/api/v1/knowledge/file%20%2Fa/activity?after_id=42&limit=20')
+  metadata[0].resolve({ success: true, data: [], next_cursor: 0 })
+  assert.equal((await pending).next_cursor, 0)
 })

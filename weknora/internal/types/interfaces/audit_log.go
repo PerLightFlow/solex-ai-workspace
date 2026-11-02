@@ -30,6 +30,10 @@ type AuditLogQuery struct {
 type AuditLogRepository interface {
 	Create(ctx context.Context, entry *types.AuditLog) error
 	List(ctx context.Context, tenantID uint64, q *AuditLogQuery) ([]*types.AuditLog, error)
+	// ListKnowledgeActivity returns only safe, document-related changes within
+	// the already-authorized owner tenant and knowledge base. User-supplied
+	// filters cannot widen this boundary.
+	ListKnowledgeActivity(ctx context.Context, tenantID uint64, kbID, knowledgeID string, afterID uint64, limit int) ([]*types.KnowledgeActivity, error)
 	// CountSinceForDedup is the rate-limit primitive for LogDenied —
 	// returns the count of matching rows in the trailing window so the
 	// service can skip writing duplicates. Filter is
@@ -69,6 +73,7 @@ type AuditLogService interface {
 		requiredRole types.TenantRole,
 	) error
 	List(ctx context.Context, tenantID uint64, q *AuditLogQuery) ([]*types.AuditLog, error)
+	ListKnowledgeActivity(ctx context.Context, tenantID uint64, kbID, knowledgeID string, afterID uint64, limit int) ([]*types.KnowledgeActivity, error)
 	// Purge deletes rows whose created_at is strictly older than the
 	// retention horizon. retentionDays <= 0 makes the call a no-op,
 	// which keeps the daily sweep cheap when retention is disabled.

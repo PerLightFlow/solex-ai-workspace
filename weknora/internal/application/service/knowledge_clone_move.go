@@ -1456,6 +1456,7 @@ func (s *knowledgeService) moveKnowledgeReuseVectors(
 	if err := s.repo.UpdateKnowledgeForTransfer(ctx, &before, knowledge); err != nil {
 		return err
 	}
+	recordKnowledgeUpdated(ctx, s.audit, knowledge, "knowledge_base_id", "tags")
 
 	return nil
 }
@@ -1497,6 +1498,7 @@ func (s *knowledgeService) moveKnowledgeReparse(
 	if err := s.repo.UpdateKnowledgeForTransfer(ctx, &before, knowledge); err != nil {
 		return err
 	}
+	recordKnowledgeUpdated(ctx, s.audit, knowledge, "knowledge_base_id", "tags")
 	if err := s.cleanupMovedSourceWiki(ctx, knowledge, sourceKB, targetKB); err != nil {
 		return err
 	}

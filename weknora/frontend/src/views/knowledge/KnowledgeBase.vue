@@ -2129,6 +2129,11 @@ const getDoc = (page: number) => {
   getfDetails(details.id, page)
 };
 
+const syncDocumentAttribution = (state: { id: string } & Record<string, unknown>) => {
+  const card = cardList.value.find(item => item.id === state.id);
+  if (card) Object.assign(card, state);
+};
+
 const syncDocumentSummaryState = (state: { id?: string; summary_status?: string; description?: string }) => {
   if (!state?.id) return;
   const card = cardList.value.find((item: KnowledgeCard) => item.id === state.id);
@@ -2817,7 +2822,7 @@ const handleKBEditorSuccess = (kbIdValue: string) => {
       <!-- DocContent drawer (shared by documents tab and wiki source refs) -->
       <DocContent ref="docContentRef" :visible="isCardDetails" :details="details" :canEditKB="canEdit"
         :canDownloadKB="canDownloadKnowledge" :kbId="kbId"
-        @closeDoc="closeDoc" @getDoc="getDoc" @summaryStateChange="syncDocumentSummaryState">
+        @closeDoc="closeDoc" @getDoc="getDoc" @summaryStateChange="syncDocumentSummaryState" @attributionChange="syncDocumentAttribution">
       </DocContent>
     </div>
   </template>

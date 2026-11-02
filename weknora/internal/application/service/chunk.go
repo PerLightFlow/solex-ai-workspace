@@ -36,6 +36,7 @@ type chunkService struct {
 	ownership       retriever.TenantStoreOwnership
 	task            interfaces.TaskEnqueuer
 	spanTracker     SpanTracker
+	audit           interfaces.AuditLogService
 }
 
 // NewChunkService creates a new chunk service
@@ -54,6 +55,7 @@ func NewChunkService(
 	ownership retriever.TenantStoreOwnership,
 	task interfaces.TaskEnqueuer,
 	spanTracker SpanTracker,
+	audit interfaces.AuditLogService,
 ) interfaces.ChunkService {
 	return &chunkService{
 		chunkRepository: chunkRepository,
@@ -64,6 +66,7 @@ func NewChunkService(
 		ownership:       ownership,
 		task:            task,
 		spanTracker:     spanTracker,
+		audit:           audit,
 	}
 }
 
@@ -360,16 +363,20 @@ func (s *chunkService) UpdateChunks(ctx context.Context, chunks []*types.Chunk) 
 // Returns:
 //   - error: Any error encountered during deletion
 func (s *chunkService) DeleteChunk(ctx context.Context, id string) error {
-	if _, err := s.writableChunk(ctx, id); err != nil {
+	chunk, err := s.writableChunk(ctx, id)
+	if err != nil {
 		return err
 	}
 	tenantID := types.MustTenantIDFromContext(ctx)
-	err := s.chunkRepository.DeleteChunk(ctx, tenantID, id)
+	err = s.chunkRepository.DeleteChunk(ctx, tenantID, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"tenant_id": tenantID,
 		})
 		return err
+	}
+	if types.IsKnowledgeUserMutation(ctx) {
+		recordKnowledgeUpdated(ctx, s.audit, &types.Knowledge{ID: chunk.KnowledgeID, TenantID: chunk.TenantID, KnowledgeBaseID: chunk.KnowledgeBaseID}, "chunks")
 	}
 	logger.Info(ctx, "Chunk deleted successfully")
 	return nil
@@ -420,7 +427,8 @@ func (s *chunkService) DeleteChunks(ctx context.Context, ids []string) error {
 // Returns:
 //   - error: Any error encountered during bulk deletion
 func (s *chunkService) DeleteChunksByKnowledgeID(ctx context.Context, knowledgeID string) error {
-	if _, err := loadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, []string{knowledgeID}); err != nil {
+	rows, err := loadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, []string{knowledgeID})
+	if err != nil {
 		return err
 	}
 	logger.Info(ctx, "Start deleting all chunks by knowledge ID")
@@ -429,7 +437,7 @@ func (s *chunkService) DeleteChunksByKnowledgeID(ctx context.Context, knowledgeI
 	tenantID := types.MustTenantIDFromContext(ctx)
 	logger.Infof(ctx, "Tenant ID: %d", tenantID)
 
-	err := s.chunkRepository.DeleteChunksByKnowledgeID(ctx, tenantID, knowledgeID)
+	err = s.chunkRepository.DeleteChunksByKnowledgeID(ctx, tenantID, knowledgeID)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"knowledge_id": knowledgeID,
@@ -438,6 +446,11 @@ func (s *chunkService) DeleteChunksByKnowledgeID(ctx context.Context, knowledgeI
 		return err
 	}
 
+	if types.IsKnowledgeUserMutation(ctx) {
+		for _, row := range rows {
+			recordKnowledgeUpdated(ctx, s.audit, row, "chunks")
+		}
+	}
 	logger.Info(ctx, "All chunks under knowledge deleted successfully")
 	return nil
 }
@@ -581,6 +594,14 @@ func (s *chunkService) UpdateDocumentChunk(
 	if err := s.chunkRepository.SaveChunkRevision(ctx, chunk, revision, oldRevision); err != nil {
 		return nil, err
 	}
+	operation := "edit"
+	if reverting, _ := ctx.Value(chunkRevertContextKey{}).(bool); reverting {
+		operation = "revert"
+	}
+	recordKBActivity(ctx, s.audit, chunk.TenantID, chunk.KnowledgeBaseID,
+		types.AuditActionKnowledgeUpdated, "knowledge", chunk.KnowledgeID, types.AuditOutcomeSuccess,
+		map[string]any{"changed_fields": []string{"chunks"}, "knowledge_id": chunk.KnowledgeID,
+			"operation": operation, "revision": chunk.ContentRevision})
 
 	if bodyChanged && chunk.ParentChunkID != "" {
 		if err := s.rebuildParentContent(ctx, chunk); err != nil {
@@ -680,6 +701,8 @@ func (s *chunkService) ListChunkRevisions(ctx context.Context, chunkID string) (
 	return s.chunkRepository.ListChunkRevisions(ctx, types.MustTenantIDFromContext(ctx), chunkID)
 }
 
+type chunkRevertContextKey struct{}
+
 func (s *chunkService) RevertDocumentChunk(
 	ctx context.Context, chunkID string, revision int, expectedRevision *int,
 ) (*types.Chunk, error) {
@@ -689,7 +712,7 @@ func (s *chunkService) RevertDocumentChunk(
 	}
 	content := item.Content
 	enabled := item.IsEnabled
-	return s.UpdateDocumentChunk(ctx, chunkID, &content, &enabled, expectedRevision)
+	return s.UpdateDocumentChunk(context.WithValue(ctx, chunkRevertContextKey{}, true), chunkID, &content, &enabled, expectedRevision)
 }
 
 // rebuildParentContent overlays manually edited child ranges on the immutable
@@ -858,9 +881,10 @@ func (s *chunkService) UpsertGeneratedQuestion(
 	if err := chunk.SetDocumentMetadata(meta); err != nil {
 		return nil, err
 	}
-	if err := s.chunkRepository.UpdateChunk(ctx, chunk); err != nil {
+	if err := s.chunkRepository.UpdateChunk(types.WithKnowledgeUserMutation(ctx), chunk); err != nil {
 		return nil, err
 	}
+	recordKnowledgeUpdated(ctx, s.audit, &types.Knowledge{ID: chunk.KnowledgeID, TenantID: chunk.TenantID, KnowledgeBaseID: chunk.KnowledgeBaseID}, "chunks")
 	if err := s.syncChunkIndex(ctx, chunk); err != nil {
 		return nil, err
 	}
@@ -965,13 +989,14 @@ func (s *chunkService) DeleteGeneratedQuestion(ctx context.Context, chunkID stri
 		return fmt.Errorf("failed to set chunk metadata: %w", err)
 	}
 
-	if err := s.chunkRepository.UpdateChunk(ctx, chunk); err != nil {
+	if err := s.chunkRepository.UpdateChunk(types.WithKnowledgeUserMutation(ctx), chunk); err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"chunk_id": chunkID,
 		})
 		return fmt.Errorf("failed to update chunk: %w", err)
 	}
 
+	recordKnowledgeUpdated(ctx, s.audit, &types.Knowledge{ID: chunk.KnowledgeID, TenantID: chunk.TenantID, KnowledgeBaseID: chunk.KnowledgeBaseID}, "chunks")
 	logger.Infof(ctx, "Successfully deleted generated question %s from chunk %s", questionID, chunkID)
 	return nil
 }

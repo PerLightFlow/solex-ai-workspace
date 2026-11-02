@@ -198,6 +198,14 @@ func (s *knowledgeService) ReplaceKnowledgeFile(ctx context.Context,
 		return nil, err
 	}
 
+	// Only stamp a committed replacement, not a failed attempt whose source
+	// was restored above. Parsing of the new source remains asynchronous.
+	if err := s.repo.UpdateKnowledgeColumns(types.WithKnowledgeUserMutation(ctx), existing.ID, nil); err != nil {
+		return nil, err
+	}
+	if refreshed, err := s.repo.GetKnowledgeByID(ctx, existing.TenantID, existing.ID); err == nil && refreshed != nil {
+		reparsed = refreshed
+	}
 	if existing.FilePath != newPath {
 		oldFileSvc := s.resolveFileServiceForPath(cleanupCtx, kb, existing.FilePath)
 		if err := oldFileSvc.DeleteFile(cleanupCtx, existing.FilePath); err != nil {
@@ -208,6 +216,7 @@ func (s *knowledgeService) ReplaceKnowledgeFile(ctx context.Context,
 	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
 		"knowledge", existing.ID, types.AuditOutcomeAccepted, map[string]any{
 			"title": title, "source_type": "file", "file_type": fileType,
+			"changed_fields":    []string{"file"},
 			"processing_status": "pending", "trigger": kbActivityTrigger(ctx),
 		})
 	return reparsed, nil

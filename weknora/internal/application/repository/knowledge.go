@@ -41,7 +41,7 @@ func escapeLikeKeyword(keyword string) string {
 // counter jump back up and never reach zero (the "stuck
 // pending_subtasks_count / never promoted to completed" bug). Omitting
 // the column here means Save can never touch it.
-var omitFieldsOnUpdate = []string{"DeletedAt", "PendingSubtasksCount"}
+var omitFieldsOnUpdate = []string{"DeletedAt", "PendingSubtasksCount", "CreatedBy", "CreatedByName", "LastModifiedBy", "LastModifiedByName", "LastModifiedAt"}
 
 // knowledgeRepository implements knowledge base and knowledge repository interface
 type knowledgeRepository struct {
@@ -55,6 +55,7 @@ func NewKnowledgeRepository(db *gorm.DB) interfaces.KnowledgeRepository {
 
 // CreateKnowledge creates knowledge
 func (r *knowledgeRepository) CreateKnowledge(ctx context.Context, knowledge *types.Knowledge) error {
+	r.setKnowledgeCreation(ctx, knowledge)
 	knowledge.ErrorMessage = common.CleanInvalidUTF8(knowledge.ErrorMessage)
 	err := r.db.WithContext(ctx).Create(knowledge).Error
 	return err
@@ -291,7 +292,7 @@ func (r *knowledgeRepository) UpdateKnowledgeFolderPath(
 	result := r.db.WithContext(ctx).
 		Model(&types.Knowledge{}).
 		Where("tenant_id = ? AND knowledge_base_id = ? AND id IN (?)", tenantID, kbID, ids).
-		Updates(map[string]interface{}{"folder_path": folderPath, "updated_at": time.Now()})
+		Updates(r.mutationColumns(ctx, map[string]interface{}{"folder_path": folderPath, "updated_at": time.Now()}))
 	if result.Error != nil {
 		return 0, result.Error
 	}
@@ -339,7 +340,7 @@ func (r *knowledgeRepository) RenameKnowledgeFolderPath(
 		for target, targetIDs := range byTarget {
 			result := tx.Model(&types.Knowledge{}).
 				Where("tenant_id = ? AND knowledge_base_id = ? AND id IN (?)", tenantID, kbID, targetIDs).
-				Updates(map[string]interface{}{"folder_path": target, "updated_at": time.Now()})
+				Updates((&knowledgeRepository{db: tx}).mutationColumns(ctx, map[string]interface{}{"folder_path": target, "updated_at": time.Now()}))
 			if result.Error != nil {
 				return result.Error
 			}
@@ -356,11 +357,11 @@ func (r *knowledgeRepository) RenameKnowledgeFolderPath(
 // UpdateKnowledge updates knowledge
 func (r *knowledgeRepository) UpdateKnowledge(ctx context.Context, knowledge *types.Knowledge) error {
 	knowledge.ErrorMessage = common.CleanInvalidUTF8(knowledge.ErrorMessage)
-	omit := omitFieldsOnUpdate
+	omit := r.knowledgeSaveOmissions(ctx, knowledge)
 	// Legacy/unit-test schemas created before custom_metadata should continue
 	// to support unrelated updates when the caller did not provide the field.
 	if knowledge.CustomMetadata == nil {
-		omit = append(append([]string{}, omitFieldsOnUpdate...), "custom_metadata")
+		omit = append(append([]string{}, omit...), "custom_metadata")
 	}
 	err := r.db.WithContext(ctx).Omit(omit...).Save(knowledge).Error
 	return err
@@ -619,6 +620,7 @@ func (r *knowledgeRepository) UpdateKnowledgeColumns(
 	id string,
 	values map[string]interface{},
 ) error {
+	values = r.mutationColumns(ctx, values)
 	if len(values) == 0 {
 		return nil
 	}

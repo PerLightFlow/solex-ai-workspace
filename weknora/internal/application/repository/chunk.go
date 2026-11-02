@@ -426,7 +426,32 @@ func (r *chunkRepository) ListChunksByParentIDsOnly(
 // except SeqID (auto-increment, must not be overwritten).
 // Make sure the chunk object is complete (e.g., fetched from DB) before calling this method.
 func (r *chunkRepository) UpdateChunk(ctx context.Context, chunk *types.Chunk) error {
+	if types.IsKnowledgeUserMutation(ctx) {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := touchChunkKnowledge(ctx, tx, chunk); err != nil {
+				return err
+			}
+			return tx.Omit("SeqID").Save(chunk).Error
+		})
+	}
 	return r.db.WithContext(ctx).Omit("SeqID").Save(chunk).Error
+}
+
+func touchChunkKnowledge(ctx context.Context, tx *gorm.DB, chunk *types.Chunk) error {
+	columns := (&knowledgeRepository{db: tx}).mutationColumns(types.WithKnowledgeUserMutation(ctx), nil)
+	if len(columns) == 0 {
+		return nil
+	}
+	result := tx.Model(&types.Knowledge{}).
+		Where("id = ? AND tenant_id = ? AND knowledge_base_id = ?", chunk.KnowledgeID, chunk.TenantID, chunk.KnowledgeBaseID).
+		Updates(columns)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrKnowledgeNotFound
+	}
+	return nil
 }
 
 func (r *chunkRepository) CreateChunkRevision(ctx context.Context, revision *types.ChunkRevision) error {
@@ -437,6 +462,9 @@ func (r *chunkRepository) SaveChunkRevision(
 	ctx context.Context, chunk *types.Chunk, revision *types.ChunkRevision, expectedRevision int,
 ) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := touchChunkKnowledge(ctx, tx, chunk); err != nil {
+			return err
+		}
 		result := tx.Model(&types.Chunk{}).
 			Where("id = ? AND tenant_id = ? AND content_revision = ?", chunk.ID, chunk.TenantID, expectedRevision).
 			Updates(map[string]interface{}{
@@ -638,7 +666,7 @@ func (r *chunkRepository) UpdateChunkFieldsByIDs(
 
 // DeleteChunk deletes a chunk by its ID
 func (r *chunkRepository) DeleteChunk(ctx context.Context, tenantID uint64, id string) error {
-	return r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&types.Chunk{}).Error
+	return r.deleteUserChunks(ctx, tenantID, "id = ?", id)
 }
 
 // DeleteChunks deletes chunks by IDs in batch.
@@ -664,9 +692,32 @@ func (r *chunkRepository) DeleteChunks(ctx context.Context, tenantID uint64, ids
 // The rows remain available for recovery until a later successful replacement
 // proves that a newer chunk with the same document position is now active.
 func (r *chunkRepository) DeleteChunksByKnowledgeID(ctx context.Context, tenantID uint64, knowledgeID string) error {
-	return r.db.WithContext(ctx).Where(
-		"tenant_id = ? AND knowledge_id = ?", tenantID, knowledgeID,
-	).Delete(&types.Chunk{}).Error
+	return r.deleteUserChunks(ctx, tenantID, "knowledge_id = ?", knowledgeID)
+}
+
+// deleteUserChunks keeps human attribution atomic with an explicit user deletion.
+// Parser cleanup uses the same methods without the marker and never changes it.
+func (r *chunkRepository) deleteUserChunks(ctx context.Context, tenantID uint64, predicate string, id string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		query := tx.Where("tenant_id = ?", tenantID).Where(predicate, id)
+		if types.IsKnowledgeUserMutation(ctx) {
+			var chunks []*types.Chunk
+			if err := query.Find(&chunks).Error; err != nil {
+				return err
+			}
+			seen := make(map[string]bool)
+			for _, chunk := range chunks {
+				if seen[chunk.KnowledgeID] {
+					continue
+				}
+				if err := touchChunkKnowledge(ctx, tx, chunk); err != nil {
+					return err
+				}
+				seen[chunk.KnowledgeID] = true
+			}
+		}
+		return tx.Where("tenant_id = ?", tenantID).Where(predicate, id).Delete(&types.Chunk{}).Error
+	})
 }
 
 // PurgeSupersededChunksByKnowledgeID permanently removes only soft-deleted

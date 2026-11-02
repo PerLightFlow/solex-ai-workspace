@@ -26,6 +26,9 @@ import { useAuthStore } from '@/stores/auth';
 import { useAssistantStore } from '@/stores/assistant';
 import AssistantActionsButton from '@/components/assistant/AssistantActionsButton.vue';
 import DocumentPreview from '@/components/document-preview.vue';
+import DocumentAttribution from '@/components/DocumentAttribution.vue';
+import KnowledgeActivityPanel from '@/components/KnowledgeActivityPanel.vue';
+import { pickKnowledgeAttribution } from '@/utils/knowledgeAttribution';
 import DocumentFileIcon from '@/views/knowledge/components/DocumentFileIcon.vue';
 import KnowledgeProcessingTimeline from '@/components/knowledge-processing-timeline.vue';
 import { resolveKnowledgeDownloadFileName } from '@/views/knowledge/knowledgeDownloadFileName';
@@ -79,6 +82,7 @@ const saveSummary = async () => {
     const result: any = await updateKnowledgeSummary(props.details.id, description);
     applySummaryState(result?.data?.summary_status, result?.data?.description ?? description);
     summaryEditing.value = false;
+    void refreshDocumentAttribution();
     MessagePlugin.success(t('common.saveSuccess'));
   } catch (error: any) {
     MessagePlugin.error(error?.message || t('common.saveFailed'));
@@ -161,6 +165,7 @@ const saveMetadata = async () => {
     const result: any = await updateKnowledgeMetadata(props.details.id, value);
     props.details.custom_metadata = value;
     metadataEditing.value = false;
+    void refreshDocumentAttribution();
     if (result?.data) {
       applySummaryState(result.data.summary_status, result.data.description);
     }
@@ -243,7 +248,23 @@ mermaid.initialize({
   }
 });
 const props = defineProps(["visible", "details", "knowledgeType", "sourceInfo", "canEditKB", "canDownloadKB", "parse_status", "kbId"]);
-const emit = defineEmits(["closeDoc", "getDoc", "questionDeleted", "summaryStateChange"]);
+const emit = defineEmits(["closeDoc", "getDoc", "questionDeleted", "summaryStateChange", "attributionChange"]);
+const activityPanel = ref<InstanceType<typeof KnowledgeActivityPanel> | null>(null);
+let attributionRefreshGeneration = 0;
+watch(() => props.details?.id, () => { attributionRefreshGeneration++; });
+const refreshDocumentAttribution = async () => {
+  const id = props.details?.id;
+  if (!id) return;
+  const generation = ++attributionRefreshGeneration;
+  try {
+    const response: any = await getKnowledgeDetails(id);
+    if (generation !== attributionRefreshGeneration || props.details?.id !== id || !response?.data) return;
+    const attribution = pickKnowledgeAttribution(response.data);
+    Object.assign(props.details, attribution);
+    emit('attributionChange', { id, ...attribution });
+    void activityPanel.value?.refresh();
+  } catch { /* Keep known provenance; do not invent a user or edit time. */ }
+};
 const assistant = useAssistantStore();
 const readingAssistantActions = computed(() => {
   const source = JSON.stringify({ knowledge_base_id: props.kbId, knowledge_id: props.details?.id });
@@ -1190,6 +1211,7 @@ const saveChunkEdit = async (item: any) => {
     editingChunkId.value = '';
     notifyChunkMutationOutcome(item, result, t('common.saveSuccess'));
     void refreshChunkHistoryAfterMutation(item);
+    void refreshDocumentAttribution();
   } catch (error: any) {
     handleChunkEditError(error, t('common.saveFailed'));
   } finally {
@@ -1206,6 +1228,7 @@ const toggleChunkEnabled = async (item: any, isEnabled: boolean) => {
     });
     notifyChunkMutationOutcome(item, result);
     void refreshChunkHistoryAfterMutation(item);
+    void refreshDocumentAttribution();
   } catch (error: any) {
     handleChunkEditError(error, t('common.error'));
   } finally {
@@ -1329,6 +1352,7 @@ const revertChunk = async (item: any, revision: number) => {
     const result: any = await revertDocumentChunk(props.details.id, item.id, revision, item.content_revision || 0);
     notifyChunkMutationOutcome(item, result, t('knowledgeBase.chunkReverted'));
     await refreshChunkHistoryAfterMutation(item);
+    void refreshDocumentAttribution();
   } catch (error: any) {
     handleChunkEditError(error, t('common.error'));
   } finally {
@@ -1657,10 +1681,7 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
         <section v-if="details.id" class="setting-drawer__section">
           <h4 class="setting-drawer__section-title">{{ $t('knowledgeBase.detailSectionMeta') }}</h4>
           <div class="doc-detail-rows">
-            <div v-if="details.time" class="doc-detail-row">
-              <span class="doc-detail-label">{{ getTimeLabel() }}</span>
-              <span class="doc-detail-value">{{ details.time }}</span>
-            </div>
+            <DocumentAttribution :document="details" />
             <div v-if="details.type" class="doc-detail-row">
               <span class="doc-detail-label">{{ $t('knowledgeBase.infoCard.type') }}</span>
               <span class="doc-detail-value">
@@ -1689,6 +1710,8 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
             </div>
           </div>
         </section>
+
+        <KnowledgeActivityPanel v-if="visible && details.id" ref="activityPanel" :knowledge-id="details.id" />
 
         <section v-if="details.id" class="setting-drawer__section metadata-section">
           <div class="section-title-actions">

@@ -230,6 +230,13 @@ type Knowledge struct {
 	LastFAQImportResult JSON `json:"last_faq_import_result" gorm:"type:json"`
 	// Creation time of the knowledge
 	CreatedAt time.Time `json:"created_at" extensions:"x-agent"`
+	// Authenticated upload and last user-visible mutation attribution. These
+	// are server-owned snapshots; processing timestamps below are independent.
+	CreatedBy          string     `json:"created_by" gorm:"type:varchar(64);not null;default:''"`
+	CreatedByName      string     `json:"created_by_name" gorm:"type:varchar(100);not null;default:''"`
+	LastModifiedBy     string     `json:"last_modified_by" gorm:"type:varchar(64);not null;default:''"`
+	LastModifiedByName string     `json:"last_modified_by_name" gorm:"type:varchar(100);not null;default:''"`
+	LastModifiedAt     *time.Time `json:"last_modified_at"`
 	// Last updated time of the knowledge
 	UpdatedAt time.Time `json:"updated_at" extensions:"x-agent"`
 	// Processed time of the knowledge

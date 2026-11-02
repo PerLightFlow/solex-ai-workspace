@@ -1105,14 +1105,14 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 		existing.Description = ""
 		existing.ProcessedAt = nil
 
-		if err := s.repo.UpdateKnowledge(ctx, existing); err != nil {
+		if err := s.repo.UpdateKnowledge(types.WithKnowledgeUserMutation(ctx), existing); err != nil {
 			logger.Errorf(ctx, "Failed to persist manual draft: %v", err)
 			return nil, err
 		}
 		s.bindContentResources(ctx, tenantID, existing.ID, cleanContent)
 		recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
 			"knowledge", existing.ID, types.AuditOutcomeSuccess, map[string]any{
-				"title": existing.Title, "status": status,
+				"title": existing.Title, "status": status, "changed_fields": []string{"content"},
 			})
 		return existing, nil
 	}
@@ -1126,7 +1126,7 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 		return nil, err
 	}
 
-	if err := s.repo.UpdateKnowledge(ctx, existing); err != nil {
+	if err := s.repo.UpdateKnowledge(types.WithKnowledgeUserMutation(ctx), existing); err != nil {
 		logger.Errorf(ctx, "Failed to persist manual knowledge before indexing: %v", err)
 		return nil, err
 	}
@@ -1149,7 +1149,8 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
 		"knowledge", existing.ID, types.AuditOutcomeAccepted, map[string]any{
 			"title": existing.Title, "status": status, "processing_status": "pending",
-			"task_id": taskID, "trigger": kbActivityTrigger(ctx),
+			"changed_fields": []string{"content"},
+			"task_id":        taskID, "trigger": kbActivityTrigger(ctx),
 		})
 	return existing, nil
 }

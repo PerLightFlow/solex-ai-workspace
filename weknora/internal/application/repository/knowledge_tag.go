@@ -18,6 +18,11 @@ func (r *knowledgeRepository) SetKnowledgeTags(
 	tagIDs []string,
 ) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if columns := (&knowledgeRepository{db: tx}).mutationColumns(ctx, nil); len(columns) > 0 {
+			if err := tx.Model(&types.Knowledge{}).Where("id = ?", knowledgeID).Updates(columns).Error; err != nil {
+				return err
+			}
+		}
 		// Delete all existing tag relations for this knowledge
 		if err := tx.Where("knowledge_id = ?", knowledgeID).
 			Delete(&types.KnowledgeTagRelation{}).Error; err != nil {
