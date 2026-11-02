@@ -11,7 +11,7 @@
         <div class="section-header">
           <div class="section-header-title">
             <h2>{{ $t('agent.editor.basicInfo') }}</h2>
-            <t-tooltip v-if="isBuiltinAgent" :content="$t('agentEditor.builtinHint')" placement="top">
+            <t-tooltip v-if="isBuiltinAgent && !systemBuiltin" :content="$t('agentEditor.builtinHint')" placement="top">
               <span class="builtin-agent-hint" tabindex="0" role="img"
                 :aria-label="$t('agentEditor.builtinHint')">
                 <t-icon name="info-circle" />
@@ -107,7 +107,7 @@
           <!-- 名称 -->
           <div class="setting-row" data-guide="agent-create-name">
             <div class="setting-info">
-              <label>{{ $t('agent.editor.name') }} <span v-if="!isBuiltinAgent"
+              <label>{{ $t('agent.editor.name') }} <span v-if="!isBuiltinAgent || systemBuiltin"
                   class="required">*</span></label>
               <p class="desc">{{ $t('agentEditor.desc.name') }}</p>
             </div>
@@ -192,9 +192,9 @@
               <div v-show="activePromptAnchor === 'system'"
                 class="setting-row setting-row-vertical prompts-panel__pane">
             <div class="setting-info">
-              <label>{{ $t('agent.editor.systemPrompt') }} <span v-if="!isBuiltinAgent"
+              <label>{{ $t('agent.editor.systemPrompt') }} <span v-if="!isBuiltinAgent || systemBuiltin"
                   class="required">*</span></label>
-              <p class="desc">{{ $t('agentEditor.desc.systemPrompt') }}{{ isBuiltinAgent ?
+              <p class="desc">{{ $t('agentEditor.desc.systemPrompt') }}{{ isBuiltinAgent && !systemBuiltin ?
                 $t('agentEditor.desc.leaveEmptyDefault') : '' }}</p>
               <p class="desc">{{ $t('agentEditor.desc.promptInheritance') }}</p>
               <div class="placeholder-tags">
@@ -259,9 +259,9 @@
           <div v-if="!isAgentMode" v-show="activePromptAnchor === 'context'"
             class="setting-row setting-row-vertical prompts-panel__pane">
             <div class="setting-info">
-              <label>{{ $t('agent.editor.contextTemplate') }} <span v-if="!isBuiltinAgent"
+              <label>{{ $t('agent.editor.contextTemplate') }} <span v-if="!isBuiltinAgent || systemBuiltin"
                   class="required">*</span></label>
-              <p class="desc">{{ $t('agentEditor.desc.contextTemplate') }}{{ isBuiltinAgent ?
+              <p class="desc">{{ $t('agentEditor.desc.contextTemplate') }}{{ isBuiltinAgent && !systemBuiltin ?
                 $t('agentEditor.desc.leaveEmptyDefault') : '' }}</p>
               <div class="placeholder-tags">
                 <span class="placeholder-label">{{ $t('agentEditor.placeholders.available') }}</span>
