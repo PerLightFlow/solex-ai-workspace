@@ -168,6 +168,7 @@ func (p *AgentPrompt) TimelineView() *PendingPromptView {
 // ResumableAgentRequest is the part of a QARequest needed to rebuild the run
 // on another replica. It holds the original query and durable request settings.
 type ResumableAgentRequest struct {
+	ExecutionSettings *AgentExecutionSettings `json:"execution_settings,omitempty"`
 	// ActingVia keeps scheduler-owned runs out of ordinary chat recovery.
 	ActingVia string `json:"acting_via,omitempty"`
 	AgentID   string `json:"agent_id"`

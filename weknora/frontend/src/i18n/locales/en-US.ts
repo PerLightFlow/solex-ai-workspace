@@ -4797,6 +4797,10 @@ export default {
         tier3: 'To put an item back under environment-variable control, click the "Reset" button on its row.'
       },
       sections: {
+        agentRuntime: {
+          title: 'Agent execution',
+          description: 'System administrators configure these settings for all users and agents. New runs inherit changes without a restart; active runs, their subtasks, and resumed runs retain their starting settings.'
+        },
         access: {
           title: 'Registration & access',
           description: 'Manage registration, password requirements, and workspace-creation rules.'
@@ -5027,6 +5031,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: 'Execution steps per task',
+          collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
+        },
         auth: {
           registration_mode: 'Registration mode',
           default_tenant_mode: 'Default workspace provisioning',
@@ -5059,6 +5067,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
+          collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
+        },
         auth: {
           registration_mode: 'Registration mode. Open registration allows anyone to create an account; invitation registration requires a valid invitation link; disabled registration prevents account creation while existing accounts can still accept invitations. Changes take effect immediately.',
           default_tenant_mode: 'Workspace provisioning after public registration. create_personal creates an Owner workspace; tenantless creates only the account until the user accepts an invitation or creates a workspace. Applies to new users only.',
@@ -5127,6 +5139,7 @@ export default {
         }
       },
       messages: {
+        integerRange: '{label} must be an integer from {min} to {max}',
         loadFailed: 'Failed to load system settings',
         saveSuccess: 'Saved',
         saveFailed: 'Save failed'

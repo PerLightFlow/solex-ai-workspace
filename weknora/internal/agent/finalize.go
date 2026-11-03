@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/compaction"
@@ -21,6 +22,7 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 	state *types.AgentState,
 	sessionID string,
 	conversation []chat.Message,
+	partial ...bool,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -46,6 +48,14 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 		"remaining work and explain any missing evidence. Use the user's requested " +
 		"language and format. Do not claim that an unperformed action " +
 		"succeeded.\"}</runtime_event>"
+	prefix := ""
+	if len(partial) > 0 && partial[0] {
+		runtimeNotice += "\n<runtime_event>{\"source\":\"runtime\",\"type\":\"partial_report\",\"message\":" +
+			"\"The iteration budget ended this unfinished task. Produce only a partial report from " +
+			"received evidence, explicitly list missing work and failed/cancelled/stopping children. " +
+			"Do not claim the overall task is complete.\"}</runtime_event>"
+		prefix = budgetReportPrefix(ctx)
+	}
 	if e.finalAnswerNeedsCompaction(messages, runtimeNotice) {
 		messages, _ = e.compactFinalAnswerContext(ctx, messages, state.CurrentRound+1,
 			runtimeNotice, compaction.ReasonThreshold)
@@ -57,6 +67,7 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 	answerStreamed := false
 	providerDone := false
 	terminalContent := ""
+	prefixSent := false
 	splitter := agenttools.NewThinkStreamSplitter()
 
 	var llmResult *streamLLMResult
@@ -91,6 +102,7 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 				}
 				_, answerContent := splitter.Feed(chunk.Content)
 				if splitter.TakeAnswerReset() {
+					prefixSent = false
 					_ = e.eventBus.Emit(
 						ctx,
 						event.Event{
@@ -103,6 +115,10 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 					_, tail := splitter.Flush()
 					answerContent += tail
 					providerDone = true
+				}
+				if answerContent != "" && !prefixSent {
+					answerContent = prefix + answerContent
+					prefixSent = true
 				}
 				// Do not close the answer until the whole stream has succeeded: a
 				// later error may require replacing this attempt with a retry.
@@ -160,7 +176,7 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 				Data: event.AgentFinalAnswerData{Replace: true},
 			})
 		}
-		answerStreamed, providerDone, terminalContent = false, false, ""
+		answerStreamed, providerDone, terminalContent, prefixSent = false, false, "", false
 		splitter = agenttools.NewThinkStreamSplitter()
 	}
 	if err != nil {
@@ -172,13 +188,16 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 		return err
 	}
 	_, tail := splitter.Flush()
+	if !prefixSent {
+		terminalContent = prefix + terminalContent
+	}
 	_ = e.eventBus.Emit(ctx, event.Event{
 		ID: answerID, Type: event.EventAgentFinalAnswer, SessionID: sessionID,
 		Data: event.AgentFinalAnswerData{Content: terminalContent + tail, Done: true},
 	})
 
 	// Safety net: strip any residual <think> blocks that may have leaked through
-	fullAnswer := agenttools.StripThinkBlocks(llmResult.Content)
+	fullAnswer := prefix + agenttools.StripThinkBlocks(llmResult.Content)
 	logger.Infof(ctx, "[Agent][FinalAnswer] Final answer generated: %d characters", len(fullAnswer))
 	common.PipelineInfo(ctx, "Agent", "final_answer_done", map[string]interface{}{
 		"session_id": sessionID,
@@ -194,6 +213,17 @@ func (e *AgentEngine) streamFinalAnswerToEventBus(
 	}
 	state.FinalAnswer = fullAnswer
 	return nil
+}
+
+// The warning is runtime-owned so even an overconfident model response cannot
+// remove the visible distinction between a partial report and completed work.
+func budgetReportPrefix(ctx context.Context) string {
+	if strings.HasPrefix(types.LanguageFromContextOrDefault(ctx), "zh") {
+		return "> **阶段性结果（任务尚未完成）**：本轮已达到执行上限，已停止新增工作并请求取消未完成的子任务。以下仅汇总已获得的结果。\n\n"
+	}
+	return "> **Partial result (task incomplete)**: This run reached its iteration limit. " +
+		"Further work is closed and unfinished child tasks have been asked to stop. " +
+		"Only results already received are summarized below.\n\n"
 }
 
 // Measure the same handle-encoded conversation sent by streamLLMToEventBus,

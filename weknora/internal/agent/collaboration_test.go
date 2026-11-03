@@ -519,7 +519,8 @@ func TestCollaborationMultipartResultsWithoutRepeatedGuidance(t *testing.T) {
 	engine := newTestEngine(t, model)
 	engine.SetCollaboration(b)
 	engine.toolRegistry = agenttools.NewToolRegistry()
-	for _, tool := range agenttools.NewCollaborationTools(b, nil) {
+	// This timeout-path fixture uses an explicit one-second administrator floor.
+	for _, tool := range agenttools.NewCollaborationTools(b, nil, 1) {
 		engine.toolRegistry.RegisterTool(tool)
 	}
 	state, err := engine.Execute(ctx, "s", "m", "Produce the complete report", nil, nil)

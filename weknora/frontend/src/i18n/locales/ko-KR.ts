@@ -4567,6 +4567,7 @@ export default {
         failed: '초기화 실패'
       },
       messages: {
+        integerRange: '{label} must be an integer from {min} to {max}',
         loadFailed: '시스템 설정을 불러오지 못했습니다',
         saveSuccess: '저장되었습니다',
         saveFailed: '저장 실패'
@@ -4608,6 +4609,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
+          collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
+        },
         model: {
           max_concurrency: '백그라운드 작업(문서 색인/보강)이 단일 모델에 대해 갖는 기본 동시 호출 상한이며, 모델 ID 기준으로 모든 복제본이 공유합니다. 매 호출마다 실시간으로 읽고 재시작 없이 즉시 적용됩니다. 0 또는 음수는 기본 상한을 해제합니다(각 모델은 모델 관리에서 설정한 자체 상한을 계속 준수함). 백그라운드 작업에만 영향을 주며 대화형 채팅에는 영향을 주지 않습니다.'
         },
@@ -4640,6 +4645,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: 'Execution steps per task',
+          collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
+        },
         model: {
           max_concurrency: '모델 기본 동시 처리 상한'
         },
@@ -4879,6 +4888,10 @@ export default {
         }
       },
       sections: {
+        agentRuntime: {
+          title: 'Agent execution',
+          description: 'System administrators configure these settings for all users and agents. New runs inherit changes without a restart; active runs, their subtasks, and resumed runs retain their starting settings.'
+        },
         other: {
           title: '기타 설정',
           description: '표준 제품 그룹에 포함되지 않은 현재 배포의 설정입니다.'

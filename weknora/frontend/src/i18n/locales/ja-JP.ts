@@ -4797,6 +4797,10 @@ export default {
         tier3: '項目を環境変数の管理下に戻すには、その行の「リセット」ボタンをクリックしてください。'
       },
       sections: {
+        agentRuntime: {
+          title: 'Agent execution',
+          description: 'System administrators configure these settings for all users and agents. New runs inherit changes without a restart; active runs, their subtasks, and resumed runs retain their starting settings.'
+        },
         access: {
           title: '登録とアクセス',
           description: '登録方法、パスワード要件、ワークスペース作成のルールを管理します。'
@@ -5027,6 +5031,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: 'Execution steps per task',
+          collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
+        },
         auth: {
           registration_mode: '登録モード',
           default_tenant_mode: 'デフォルトのワークスペース作成方式',
@@ -5059,6 +5067,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
+          collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
+        },
         auth: {
           registration_mode: '登録モード。公開登録では誰でもアカウントを作成できます。招待登録には有効な招待リンクが必要です。登録禁止でも既存アカウントは招待を承諾できます。保存後すぐに反映されます。',
           default_tenant_mode: '公開登録後のワークスペース作成方式です。create_personalはオーナー権限のワークスペースを作成し、tenantlessはアカウントのみを作成して、ユーザが招待を承諾するかワークスペースを作成するまで待ちます。新規ユーザにのみ適用されます。',
@@ -5127,6 +5139,7 @@ export default {
         }
       },
       messages: {
+        integerRange: '{label} must be an integer from {min} to {max}',
         loadFailed: 'システム設定の読み込みに失敗しました',
         saveSuccess: '保存しました',
         saveFailed: '保存に失敗しました'

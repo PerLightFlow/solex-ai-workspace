@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
+	appruntime "github.com/Tencent/WeKnora/internal/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
@@ -353,7 +354,7 @@ func (s *sessionService) AgentQA(
 	}
 	promptSuspend := s.cfg != nil && s.cfg.Agent.PromptSuspend()
 	if req.Suspendable && (promptSuspend || collaborating) {
-		if request, err := json.Marshal(resumableAgentRequest(ctx, req)); err != nil {
+		if request, err := json.Marshal(resumableAgentRequest(ctx, req, agentConfig)); err != nil {
 			logger.Warnf(ctx, "Run cannot be suspended, encoding its request failed: %v", err)
 		} else {
 			engine.EnableSuspension(request)
@@ -480,7 +481,7 @@ func composeAgentImageQuery(
 
 // resumableAgentRequest keeps the durable part of req needed to rebuild the
 // run elsewhere. Session, attachments and images are reloaded from storage.
-func resumableAgentRequest(ctx context.Context, req *types.QARequest) types.ResumableAgentRequest {
+func resumableAgentRequest(ctx context.Context, req *types.QARequest, config ...*types.AgentConfig) types.ResumableAgentRequest {
 	r := types.ResumableAgentRequest{
 		ActingVia:           types.ActingViaFromContext(ctx),
 		Query:               req.Query,
@@ -502,7 +503,47 @@ func resumableAgentRequest(ctx context.Context, req *types.QARequest) types.Resu
 	if req.CustomAgent != nil {
 		r.AgentID, r.AgentTenantID = req.CustomAgent.ID, req.CustomAgent.TenantID
 	}
+	if len(config) > 0 {
+		r.ExecutionSettings = types.AgentExecutionSettingsFromConfig(config[0])
+	}
 	return r
+}
+
+func executionSettingsFromSnapshot(data []byte) (*types.AgentExecutionSettings, error) {
+	snapshot, err := agent.DecodeRunSnapshot(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(snapshot.Request) == 0 {
+		return nil, nil // snapshots created before execution budgets were pinned
+	}
+	var request types.ResumableAgentRequest
+	if err := json.Unmarshal(snapshot.Request, &request); err != nil {
+		return nil, fmt.Errorf("decode saved execution settings: %w", err)
+	}
+	return request.ExecutionSettings, nil
+}
+
+// applyAgentExecutionSettings pins platform policy only for new work. A saved
+// server-side snapshot wins on resumes and delegated turns, so a UI update
+// cannot shorten or expand a task that has already started.
+func (s *sessionService) applyAgentExecutionSettings(ctx context.Context, req *types.QARequest, cfg *types.AgentConfig) error {
+	if req.Resume != nil && req.Resume.ExecutionSettings != nil {
+		req.Resume.ExecutionSettings.Apply(cfg)
+		return nil
+	}
+	if saved, err := delegatedConfigFromBinding(ctx); err != nil {
+		return err
+	} else if saved != nil && saved.ExecutionSettings != nil {
+		saved.ExecutionSettings.Apply(cfg)
+		return nil
+	}
+	settings := appruntime.ResolveAgentExecutionSettings(ctx, s.systemSettingService)
+	if types.ManagedRuntimeEnabled() {
+		cfg.MaxIterations = settings.MaxIterations
+	}
+	cfg.CollaborationWaitTimeoutSeconds = settings.CollaborationWaitTimeoutSeconds
+	return nil
 }
 
 // buildAgentConfig creates a runtime AgentConfig from the QARequest's custom agent configuration,
@@ -552,6 +593,9 @@ func (s *sessionService) buildAgentConfig(
 		// Only read-only tools overlap (agenttools.CanRunConcurrently);
 		// anything else is a barrier that runs alone, in model order.
 		ParallelToolCalls: true,
+	}
+	if err := s.applyAgentExecutionSettings(ctx, req, agentConfig); err != nil {
+		return nil, err
 	}
 	if !managedModelRestricted(ctx) {
 		applyRequestReasoningEffort(req.ReasoningEffort, &agentConfig.Thinking, &agentConfig.ReasoningEffort)

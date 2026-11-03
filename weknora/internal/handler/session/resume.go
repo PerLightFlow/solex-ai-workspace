@@ -245,7 +245,7 @@ func (h *Handler) buildResumeRequest(
 		pageContext:         req.PageContext,
 		assistantAccess:     req.AssistantAccess,
 		skipSSE:             true,
-		resume:              &types.AgentResume{Snapshot: state.Snapshot, Prompt: prompt},
+		resume:              &types.AgentResume{Snapshot: state.Snapshot, Prompt: prompt, ExecutionSettings: req.ExecutionSettings},
 	}, state, nil
 }
 
@@ -375,6 +375,40 @@ func (h *Handler) CollaborationEvents(ctx context.Context,
 	bus *event.EventBus,
 ) func(context.Context) error {
 	stream := h.setupStreamHandler(ctx, s.ID, m.ID, m.RequestID, s.TenantID, time.Now(), m, bus)
+	return stream.publishCompletion
+}
+
+// RecoveredParentEvents restores the ordinary chat's stop handling for an
+// execution resumed by the collaboration scheduler. Its stream may contain a
+// completion marker from a previous suspension, so this watcher follows the
+// current execution context instead of treating replayed completions as final.
+func (h *Handler) RecoveredParentEvents(ctx context.Context,
+	s *types.Session,
+	m *types.Message,
+	bus *event.EventBus,
+	cancel context.CancelFunc,
+) func(context.Context) error {
+	stream := h.setupStreamHandler(ctx, s.ID, m.ID, m.RequestID, s.TenantID, time.Now(), m, bus)
+	bus.On(event.EventStop, func(context.Context, event.Event) error {
+		// The recovery owner persists after AgentQA has unwound. Do not race
+		// that final write by completing the same message in the watcher.
+		cancel()
+		return nil
+	})
+	bus.On(event.EventAgentComplete, func(context.Context, event.Event) error {
+		// A cancelled synthesis has no final answer, but its streamed prefix
+		// is still useful. Preserve it before the recovery owner saves history.
+		stream.mu.Lock()
+		defer stream.mu.Unlock()
+		if ctx.Err() != nil && m.Content == "" {
+			m.Content = stream.finalAnswer
+			if stream.completionEvent != nil {
+				stream.completionEvent.Data["final_content"] = m.Content
+			}
+		}
+		return nil
+	})
+	h.watchStopEvents(ctx, s.ID, m.ID, bus, false)
 	return stream.publishCompletion
 }
 

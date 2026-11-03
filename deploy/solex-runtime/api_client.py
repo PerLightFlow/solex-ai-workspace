@@ -93,7 +93,7 @@ class Client:
             raise ApiError(method, path, exc.code) from None
         except (error.URLError, TimeoutError, ValueError):
             raise RuntimeError(f'{method} {path.split("?")[0]} transport/JSON failure; details omitted') from None
-        if result.get('success') is False:
+        if isinstance(result, dict) and result.get('success') is False:
             raise RuntimeError(f'{method} {path.split("?")[0]} unsuccessful; response omitted')
         return result
 

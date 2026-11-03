@@ -48,6 +48,25 @@ function settingRowGuard(labelKey) {
   return row[1]
 }
 
+test('global execution budgets hide per-agent controls for administrators too', () => {
+  const declaration = source.match(/const usesGlobalAgentBudget = computed\([\s\S]*?\);/)?.[0]
+  assert.ok(declaration)
+  const guard = settingRowGuard('agent.editor.maxIterations').match(/v-if="([^"]+)"/)?.[1]
+  assert.ok(guard)
+  for (const [managedDeployment, known, failed, expected] of [
+    [true, true, false, true], [false, true, false, false],
+    [false, false, false, true], [false, true, true, true],
+  ]) {
+    // System administrators are exempt from the ordinary managed user guard.
+    const usesGlobalAgentBudget = runInNewContext(`${declaration}\nusesGlobalAgentBudget`, {
+      computed: fn => fn(), managedRuntime: { value: false },
+      deploymentCapabilities: { managedRuntime: managedDeployment, loaded: known, loadError: failed ? 'unavailable' : '' },
+    })
+    assert.equal(usesGlobalAgentBudget, expected)
+    assert.equal(runInNewContext(guard, { isAgentMode: true, usesGlobalAgentBudget }), !expected)
+  }
+})
+
 test('conversation settings stay reachable in smart-reasoning mode', () => {
   // Agent mode keeps the section: it explains that history follows the context
   // window and hosts retain_retrieval_history, so it must not be gated on mode.

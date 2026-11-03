@@ -20,6 +20,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
+	appruntime "github.com/Tencent/WeKnora/internal/runtime"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -101,6 +102,16 @@ type settingSpec struct {
 // the new value, no in-memory state bound at init time we cannot
 // re-derive)".
 var registry = map[string]settingSpec{
+	appruntime.AgentMaxIterationsKey: {
+		Type: "int", Default: int64(appruntime.DefaultAgentMaxIterations), Category: "agent",
+		Description: "统一运行模式下每次智能体任务的最大模型推理轮数（1–200，默认 50）。" +
+			"管理员与普通用户统一继承；修改后对新任务生效，运行中的任务、子任务与恢复任务保留启动时的预算。",
+	},
+	appruntime.AgentCollaborationWaitTimeoutSecondsKey: {
+		Type: "int", Default: int64(appruntime.DefaultCollaborationWaitTimeoutSeconds), Category: "agent",
+		Description: "协作等待工具的最短等待时长（秒，1–60，默认 30），避免短轮询消耗推理轮数。" +
+			"子任务进展或用户输入可提前唤醒；修改后对新任务生效，运行中的任务保持启动时的设置。",
+	},
 	// NOTE: file.max_size_mb is intentionally NOT registered. Although
 	// the Go upload handlers accept a runtime override via
 	// systemSettingSvc.GetInt, the actual upload limit is gated end-to-end
@@ -1379,6 +1390,18 @@ func encodeForType(declared string, rawValue any) (types.JSON, error) {
 //     400 body verbatim).
 func validateRegistryEntry(key string, rawValue any) error {
 	switch key {
+	case appruntime.AgentMaxIterationsKey, appruntime.AgentCollaborationWaitTimeoutSecondsKey:
+		n, err := coerceToPositiveInt64(rawValue)
+		if err != nil {
+			return err
+		}
+		maximum := int64(appruntime.MaxAgentMaxIterations)
+		if key == appruntime.AgentCollaborationWaitTimeoutSecondsKey {
+			maximum = int64(appruntime.MaxCollaborationWaitTimeoutSeconds)
+		}
+		if n < 1 || n > maximum {
+			return fmt.Errorf("value must be an integer between 1 and %d", maximum)
+		}
 	case "asynq.core_concurrency", "asynq.postprocess_concurrency",
 		"asynq.enrichment_concurrency", "asynq.maintenance_concurrency",
 		"asynq.shared_concurrency", "asynq.wiki_concurrency":

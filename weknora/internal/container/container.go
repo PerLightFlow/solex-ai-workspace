@@ -728,7 +728,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		messages.DelegatedPrompts = collaboration.PendingPrompts
 		messages.CollaborationStatuses = collaboration.HistoryStatuses
 		collaboration.BindRecovery(broker, gate, streams)
-		collaboration.ParentEvents = sessions.CollaborationEvents
+		collaboration.ParentEvents = sessions.RecoveredParentEvents
 		collaboration.ChildEvents = sessions.CollaborationEvents
 		collaboration.ParentSteer = sessions.CollaborationSteer
 		runs.RecoverAnswered = func(ctx context.Context, p *types.AgentPrompt) (bool, error) {

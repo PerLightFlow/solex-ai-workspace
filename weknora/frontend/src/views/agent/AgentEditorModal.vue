@@ -708,7 +708,7 @@
           </div>
 
           <!-- 最大迭代次数（Agent 模式）：正数为上限，-1 为不限制 -->
-          <div v-if="isAgentMode" class="setting-row">
+          <div v-if="isAgentMode && !usesGlobalAgentBudget" class="setting-row">
             <div class="setting-info">
               <label>{{ $t('agent.editor.maxIterations') }}</label>
               <p class="desc">{{ $t('agentEditor.desc.maxIterations') }}</p>
@@ -2017,6 +2017,10 @@ const props = defineProps<{
 }>();
 
 const managedRuntime = computed(() => managedUserRuntime.value || props.systemBuiltin === true);
+// The execution budget is global even for administrators in managed deployments.
+// Keep it hidden until capabilities are known rather than offering a temporary override.
+const usesGlobalAgentBudget = computed(() => managedRuntime.value || deploymentCapabilities.managedRuntime ||
+  !deploymentCapabilities.loaded || Boolean(deploymentCapabilities.loadError));
 
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void;
@@ -5167,6 +5171,7 @@ const handleSave = async () => {
   if (hostOnly.value) formData.value.config.sandbox_config_id = ''
 
   const config = managedAgentConfig(serializeAgentPrompts({ ...formData.value.config, allowed_tools: allowedToolsToSave() }, promptTemplates.value), managedRuntime.value);
+  if (usesGlobalAgentBudget.value) delete config.max_iterations;
   const payload = { name: formData.value.name, description: formData.value.description, avatar: formData.value.avatar,
     config: props.systemBuiltin ? systemAgentConfig(config) : config };
   saving.value = true;

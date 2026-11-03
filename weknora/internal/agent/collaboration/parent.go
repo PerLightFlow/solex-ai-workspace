@@ -10,6 +10,7 @@ import (
 )
 
 type parentOwnerKey struct{}
+type parentLeaseContextKey struct{}
 
 // AcquireParent attaches a new engine to an unfinished task after its prior
 // engine lease expires. Completed groups never revive. Automatic recovery uses
@@ -75,7 +76,14 @@ func (b *Binding) Start(ctx context.Context) (context.Context, func()) {
 	if b.ParentOwner == "" {
 		return ctx, func() {}
 	}
+	// Recovery, Resume and the execution loop can all enter this lifecycle.
+	// Reuse the outer lease instead of creating independently cancelling
+	// heartbeat contexts around the same parent execution.
+	if existing, _ := ctx.Value(parentLeaseContextKey{}).(*Binding); existing == b {
+		return ctx, func() {}
+	}
 	ctx, cancel := context.WithCancel(b.Context(ctx))
+	ctx = context.WithValue(ctx, parentLeaseContextKey{}, b)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -89,7 +97,8 @@ func (b *Binding) Start(ctx context.Context) (context.Context, func()) {
 			case <-tick.C:
 				completed := false
 				err := b.Runtime.Store.Change(ctx, b.Scope, func(g *Group) error {
-					completed = g.Status == "completed"
+					completed = g.Status == "completed" ||
+						(g.ParentBudgetClosed && (g.Status == "cancelling" || g.Status == "cancelled"))
 					if completed {
 						return nil
 					}
@@ -107,7 +116,7 @@ func (b *Binding) Start(ctx context.Context) (context.Context, func()) {
 				})
 				if err == nil && completed {
 					return
-				} // normal completion must not cancel final event delivery
+				} // normal/budget completion must not cancel final report delivery
 				if err != nil && !isFenceError(err) && time.Now().Before(lease) && ctx.Err() == nil {
 					continue
 				}

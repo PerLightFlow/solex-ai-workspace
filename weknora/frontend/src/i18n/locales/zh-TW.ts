@@ -4569,6 +4569,7 @@ export default {
         failed: '重設失敗'
       },
       messages: {
+        integerRange: '{label} 必須是 {min}–{max} 之間的整數',
         loadFailed: '載入系統設定失敗',
         saveSuccess: '已儲存',
         saveFailed: '儲存失敗'
@@ -4610,6 +4611,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: '單次任務最多執行的推論與工具呼叫步驟，預設 50 步，可設定 1–200 步。這是執行步數上限，不是聊天訊息數量。',
+          collaboration_wait_timeout_seconds: '沒有新進展時，協作等待請求至少使用此時間，預設 30 秒，可設定 1–60 秒；請求更長時最多等待 60 秒。有新結果或使用者輸入時可提前結束等待。'
+        },
         model: {
           max_concurrency: '後台任務（文件入庫/富化）對單個模型的預設併發上限，按模型 ID 全副本共享。每次呼叫實時讀取，修改後立即生效、無需重啟。0 或負數表示關閉預設限制（各模型仍會尊重自身在模型管理裡設定的上限）。僅影響後台任務，不影響交互式對話。'
         },
@@ -4642,6 +4647,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: '單次任務執行步數上限',
+          collaboration_wait_timeout_seconds: '協作無更新等待時間（秒）'
+        },
         model: {
           max_concurrency: '模型預設併發上限'
         },
@@ -4881,6 +4890,10 @@ export default {
         }
       },
       sections: {
+        agentRuntime: {
+          title: '智慧體執行',
+          description: '由系統管理員統一設定，所有使用者和智慧體的新任務自動繼承。儲存後無需重新啟動；已開始的任務、子任務與恢復執行沿用啟動時的設定。'
+        },
         other: {
           title: '其他設定',
           description: '當前部署中未歸入標準分組的設定項。'

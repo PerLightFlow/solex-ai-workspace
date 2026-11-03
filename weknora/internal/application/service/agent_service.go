@@ -26,6 +26,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	"github.com/Tencent/WeKnora/internal/productdocs"
+	appruntime "github.com/Tencent/WeKnora/internal/runtime"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -1586,12 +1587,16 @@ func (s *agentService) ValidateConfig(config *types.AgentConfig) error {
 		return fmt.Errorf("config cannot be nil")
 	}
 
+	maximum := MAX_ITERATIONS
+	if types.ManagedRuntimeEnabled() {
+		maximum = appruntime.MaxAgentMaxIterations
+	}
 	if config.MaxIterations < 0 {
 		config.MaxIterations = types.UnlimitedMaxIterations
 	} else if config.MaxIterations == 0 {
 		config.MaxIterations = 5
-	} else if config.MaxIterations > MAX_ITERATIONS {
-		return fmt.Errorf("max iterations too high: %d (max %d)", config.MaxIterations, MAX_ITERATIONS)
+	} else if config.MaxIterations > maximum {
+		return fmt.Errorf("max iterations too high: %d (max %d)", config.MaxIterations, maximum)
 	}
 
 	return nil

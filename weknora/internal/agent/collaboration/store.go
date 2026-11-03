@@ -73,6 +73,9 @@ type Group struct {
 	ParentWait      *ParentWait
 	// ParentClosePending keeps interrupted/expired parents recoverable until their transcript and stream are closed.
 	ParentClosePending bool
+	// ParentBudgetClosed distinguishes a bounded partial-report closeout from
+	// user cancellation. It never reopens tool admission or recovery.
+	ParentBudgetClosed bool
 	RootQuery          string
 	Scope              Scope
 	Status             string

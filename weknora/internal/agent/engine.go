@@ -700,10 +700,14 @@ func (e *AgentEngine) executeLoop(
 	sessionID string,
 	messageID string,
 ) (*types.AgentState, error) {
+	// Collaboration lease cancellation must not erase a bounded, tool-free
+	// budget report. Keep the actual request context so user cancellation and
+	// deadlines still stop that report immediately.
+	requestCtx := ctx
+	stopCollaboration := func() {}
 	if e.collaboration != nil {
-		var stop func()
-		ctx, stop = e.collaboration.Start(ctx)
-		defer stop()
+		ctx, stopCollaboration = e.collaboration.Start(ctx)
+		defer stopCollaboration()
 		e.bindCollaborationInput(sessionID, messageID)
 	}
 	startTime := time.Now()
@@ -814,7 +818,10 @@ loop:
 	// answers, so no answer is synthesized for it.
 	if !state.IsComplete && ctx.Err() == nil && state.Suspended == nil {
 		if e.collaboration != nil && e.collaboration.Child == nil && e.collaborationOwnsFailure(ctx) {
-			return state, fmt.Errorf("parent iteration budget exhausted; remaining delegated work was cancelled")
+			if err := e.handleCollaborationBudget(requestCtx, query, state, sessionID, messageID, messages); err != nil {
+				return state, err
+			}
+			return state, nil
 		}
 		if err := e.handleMaxIterations(ctx, query, state, sessionID, messages); err != nil {
 			return state, err
@@ -1262,6 +1269,21 @@ func (e *AgentEngine) runReActIteration(
 			}
 		}
 		if e.collaboration != nil && response.FinishReason != "content_filter" {
+			// A draft on the last available round cannot justify an unbounded
+			// wait for children. Route pending results/work to the same bounded
+			// closeout as a last-round tool call, before saving a wait checkpoint.
+			if e.collaboration.Child == nil && !e.withinIterationBudget(state.CurrentRound+1) {
+				pending, err := e.collaboration.PendingAnswer(ctx)
+				if err != nil {
+					return iterOutcomeBreak, err
+				}
+				if pending {
+					*messagesPtr = e.appendCollaborationDeliveryBoundary(*messagesPtr, verdict.finalAnswer)
+					verdict.step.IntermediateAnswer = true
+					state.RoundSteps = append(state.RoundSteps, verdict.step)
+					return iterOutcomeNext, nil
+				}
+			}
 			if e.suspendable && e.collaboration.Child == nil {
 				checkpoint := RunSnapshot{
 					CollaborationDeliveries: e.progress.collaborationDeliveries,
@@ -1303,9 +1325,6 @@ func (e *AgentEngine) runReActIteration(
 					if inputReady && e.steerOverruns < maxSteerOverruns {
 						e.steerOverruns++
 						e.allowSteerOverrun = true
-					} else {
-						return iterOutcomeBreak,
-							fmt.Errorf("agent iteration budget exhausted with unprocessed collaboration events")
 					}
 				}
 				*messagesPtr = e.appendCollaborationDeliveryBoundary(*messagesPtr, verdict.finalAnswer)

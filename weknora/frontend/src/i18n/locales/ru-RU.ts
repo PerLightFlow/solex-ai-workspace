@@ -4567,6 +4567,7 @@ export default {
         failed: 'Ошибка сброса'
       },
       messages: {
+        integerRange: '{label} must be an integer from {min} to {max}',
         loadFailed: 'Не удалось загрузить системные настройки',
         saveSuccess: 'Сохранено',
         saveFailed: 'Ошибка сохранения'
@@ -4608,6 +4609,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
+          collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
+        },
         model: {
           max_concurrency: 'Лимит по умолчанию на количество одновременных фоновых вызовов (индексация/обогащение) к одной модели, привязанный к ID модели и общий для всех реплик. Читается при каждом вызове и применяется сразу без перезапуска. 0 или отрицательное значение отключает лимит по умолчанию (каждая модель всё равно соблюдает собственный лимит, заданный в управлении моделями). Влияет только на фоновые задачи, не на интерактивный чат.'
         },
@@ -4640,6 +4645,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: 'Execution steps per task',
+          collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
+        },
         model: {
           max_concurrency: 'Лимит параллелизма модели по умолчанию'
         },
@@ -4879,6 +4888,10 @@ export default {
         }
       },
       sections: {
+        agentRuntime: {
+          title: 'Agent execution',
+          description: 'System administrators configure these settings for all users and agents. New runs inherit changes without a restart; active runs, their subtasks, and resumed runs retain their starting settings.'
+        },
         other: {
           title: 'Другие настройки',
           description: 'Настройки этого развёртывания вне стандартных групп.'

@@ -23,7 +23,7 @@ func TestInheritedChildSnapshotKeepsEffectiveScopeWithoutSecrets(t *testing.T) {
 	ctx = context.WithValue(ctx, childSourceKey{}, childSource{Agent: agents.agent, ModelID: "input-model"})
 	cfg := &types.AgentConfig{
 		SystemPrompt: "effective instructions", ReasoningEffort: "high", MaxCompletionTokens: 24576,
-		MaxIterations: -1, AllowedTools: []string{tools.ToolWikiReadPage},
+		MaxIterations: -1, CollaborationWaitTimeoutSeconds: 45, AllowedTools: []string{tools.ToolWikiReadPage},
 		MCPSelectionMode: "selected", MCPServices: []string{"selected-mcp"},
 		SkillsEnabled: true, AllowedSkills: []string{"selected-skill"},
 		SandboxConfigID: "sandbox", LocalBrowserEnabled: true,
@@ -74,6 +74,7 @@ func TestInheritedChildSnapshotKeepsEffectiveScopeWithoutSecrets(t *testing.T) {
 	require.Equal(t, "high", restored.ReasoningEffort)
 	require.Equal(t, 24576, restored.MaxCompletionTokens)
 	require.Equal(t, -1, restored.MaxIterations)
+	require.Equal(t, 45, restored.CollaborationWaitTimeoutSeconds)
 	require.Equal(t, "sandbox", restored.SandboxConfigID)
 	require.True(t, restored.LocalBrowserEnabled)
 	require.True(t, restored.MultiTurnEnabled)
@@ -88,11 +89,13 @@ func TestInheritedChildSnapshotKeepsEffectiveScopeWithoutSecrets(t *testing.T) {
 }
 
 func TestInheritedSpawnWorksWithoutTemplateIDAndSurvivesRestartFollowup(t *testing.T) {
+	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
 	s, agents, _, ctx := collaborationService(t)
 	ctx = context.WithValue(ctx, childSourceKey{}, childSource{Agent: agents.agent, ModelID: "chosen-model"})
 	registry := tools.NewToolRegistry()
 	require.NoError(t, s.attach(ctx, &agent.AgentEngine{}, registry, &types.AgentConfig{
 		SystemPrompt: "pinned prompt", AssistantAccess: types.AssistantAccessConfirm,
+		MaxIterations: 70, CollaborationWaitTimeoutSeconds: 40,
 	}, "parent", "parent-answer"))
 	tool, err := registry.GetTool("spawn_agent")
 	require.NoError(t, err)
@@ -119,6 +122,16 @@ func TestInheritedSpawnWorksWithoutTemplateIDAndSurvivesRestartFollowup(t *testi
 	require.Len(t, g.Members, 3)
 	require.Empty(t, g.Members[0].AgentID)
 	require.Equal(t, "a", g.Members[2].AgentID)
+	for _, member := range g.Members {
+		var saved delegatedConfig
+		require.NoError(t, json.Unmarshal([]byte(member.ConfigJSON), &saved))
+		if saved.Inherited != nil {
+			require.Equal(t, 70, saved.Inherited.Config.MaxIterations)
+			require.Equal(t, 40, saved.Inherited.Config.CollaborationWaitTimeoutSeconds)
+		} else {
+			require.Equal(t, &types.AgentExecutionSettings{MaxIterations: 70, CollaborationWaitTimeoutSeconds: 40}, saved.ExecutionSettings)
+		}
+	}
 	require.Equal(t, "check", collaborationStatusView(g).Tasks[0].DisplayName)
 	// A new scheduler has only persisted state, no original parent request/config.
 	s.Runtime = collaboration.New(s.Runtime.Store, s.run)

@@ -28,6 +28,40 @@ func (e *AgentEngine) collaborationOwnsFailure(ctx context.Context) bool {
 	return err != nil || delegated
 }
 
+// handleCollaborationBudget ends work before the one tool-free synthesis.
+// It preserves late results and failed/cancelled task states instead of
+// replacing the unfinished collaboration with an optimistic success message.
+func (e *AgentEngine) handleCollaborationBudget(
+	ctx context.Context, query string, state *types.AgentState, sessionID, messageID string, messages []chat.Message,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	closed, err := e.collaboration.CloseBudget(ctx)
+	if err != nil {
+		return fmt.Errorf("close delegated work after iteration budget: %w", err)
+	}
+	e.deliverCollaborationEvents(&messages, closed.Events, len(state.RoundSteps)+1, true)
+	e.drainSteerMessages(ctx, state, &messages, sessionID, messageID)
+	notice, err := json.Marshal(map[string]any{
+		"source": "runtime", "type": "iteration_budget_exhausted", "status": "partial",
+		"tasks": closed.Tasks,
+		"message": "The parent iteration budget is exhausted. Further delegated work is closed. " +
+			"Unfinished children were asked to cancel; running does not mean stopped yet. " +
+			"Use only results already received. Identify failed, cancelled, stopping or unverified work " +
+			"as incomplete. Give a partial report and remaining work, never claim full task completion.",
+	})
+	if err != nil {
+		return err
+	}
+	messages = append(messages, chat.Message{Role: "user", Content: "<runtime_event>" + string(notice) + "</runtime_event>"})
+	if err := e.streamFinalAnswerToEventBus(ctx, query, state, sessionID, messages, true); err != nil {
+		return fmt.Errorf("summarize partial results after iteration budget: %w", err)
+	}
+	state.IsComplete = true // The execution ended; the explicit report remains partial.
+	return nil
+}
+
 // Deliveries are user-role input so the model never reads them as its own
 // words and imitates the envelope; the tag and guidance mark them as agent
 // data rather than user instructions. Runtime events carry their own tag.

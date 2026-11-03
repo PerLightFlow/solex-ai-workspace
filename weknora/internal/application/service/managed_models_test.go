@@ -81,7 +81,7 @@ func TestManagedAgentWithoutModelRunsAndFollowsChangedDefault(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, created.Config.ModelID)
 	assert.Equal(t, "Explain sources", created.Config.SystemPrompt)
-	assert.Equal(t, 10, created.Config.MaxIterations)
+	assert.Zero(t, created.Config.MaxIterations, "stored agents inherit their execution budget at run time")
 	models := &stubModelService{availableModels: []*types.Model{managedTestModel("default-a", types.ModelTypeKnowledgeQA)}}
 	svc := &sessionService{modelService: models}
 	req := &types.QARequest{CustomAgent: created, SummaryModelID: "private"}
@@ -149,7 +149,7 @@ func TestManagedAgentRuntimeIgnoresSavedAdvancedModelParameters(t *testing.T) {
 	assert.Equal(t, 0.6, cfg.Temperature)
 	assert.Equal(t, 4096, cfg.MaxCompletionTokens)
 	assert.Equal(t, 120, cfg.LLMCallTimeout)
-	assert.Equal(t, 10, cfg.MaxIterations)
+	assert.Zero(t, cfg.MaxIterations, "model normalization must not freeze the runtime iteration budget")
 	assert.Empty(t, cfg.ModelID)
 	assert.Empty(t, cfg.SandboxConfigID)
 	assert.Empty(t, cfg.ReasoningEffort)

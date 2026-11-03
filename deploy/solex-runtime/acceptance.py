@@ -5,6 +5,7 @@ import time
 from api_client import ROOT, Client, ApiError, save_json
 from stream_check import check_stream
 from attribution_check import check_document_attribution
+from runtime_settings_check import check_runtime_settings
 
 
 def expect_forbidden(client, method, path, data=None):
@@ -172,8 +173,9 @@ def run(state_dir):
             raise RuntimeError('Personal knowledge base appeared in the admin workspace')
         chat = check_stream(client, agent_id=agent_id)
         catalog = check_builtin_catalog(admin, client, kb_id)
+        runtime_settings = check_runtime_settings(admin, client)
         result = {'passed': True, 'time': time.time(), 'ordinary_registration': True,
-            'document_attribution': attribution,
+            'document_attribution': attribution, 'agent_runtime_settings': runtime_settings,
             'default_models_inherited': True, 'search_provider_inherited': True, 'configuration_writes_forbidden': True,
             'create_agent_without_model': True, 'create_kb_without_model': True, 'ordinary_upload_and_vector_retrieval':True,
             'personal_workspace_list_isolation': True, 'chat_stream': chat, 'system_agent_catalog': catalog,

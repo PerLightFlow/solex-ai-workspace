@@ -55,7 +55,9 @@ func normalizeManagedAgentModels(ctx context.Context, cfg *types.CustomAgentConf
 	cfg.ReasoningEffort = ""
 	cfg.LLMCallTimeout = 0
 	cfg.ASRModelID = ""
-	cfg.MaxIterations = 10
+	// The effective budget comes from platform settings when a run starts.
+	// Zero here removes a user-supplied override without baking in a budget.
+	cfg.MaxIterations = 0
 	cfg.SandboxConfigID = ""
 	cfg.ChatParserEngineRules = nil
 	cfg.ImageStorageProvider = ""

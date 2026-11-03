@@ -291,6 +291,7 @@ func testCollaborationParentResume(t *testing.T, agentID string) {
 		_ *types.Session,
 		m *types.Message,
 		bus *event.EventBus,
+		_ context.CancelFunc,
 	) func(context.Context) error {
 		bus.On(event.EventAgentComplete, func(_ context.Context, e event.Event) error {
 			data := e.Data.(event.AgentCompleteData)
@@ -410,6 +411,7 @@ func TestCollaborationParentSetupFailureStillCompletesMessage(t *testing.T) {
 		_ *types.Session,
 		m *types.Message,
 		bus *event.EventBus,
+		_ context.CancelFunc,
 	) func(context.Context) error {
 		bus.On(event.EventAgentComplete, func(_ context.Context, e event.Event) error {
 			completions++

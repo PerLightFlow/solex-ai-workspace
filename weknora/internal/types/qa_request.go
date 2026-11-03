@@ -225,6 +225,8 @@ type QARequest struct {
 
 // AgentResume is what a resumed run continues from.
 type AgentResume struct {
+	// ExecutionSettings is populated only from the server's durable request.
+	ExecutionSettings *AgentExecutionSettings
 	// Snapshot is the run state saved when the run suspended.
 	Snapshot []byte
 	// Prompt is the answered prompt the run was suspended on.

@@ -167,7 +167,7 @@ func TestAutomationParentRecoveryDoesNotEscapeScheduler(t *testing.T) {
 	require.NoError(t, messages.UpdateMessage(ctx, &types.Message{ID: scope.ID, SessionID: scope.SessionID}))
 	svc.streams = &collaborationStreams{}
 	svc.ParentEvents = func(
-		context.Context, *types.Session, *types.Message, *event.EventBus,
+		context.Context, *types.Session, *types.Message, *event.EventBus, context.CancelFunc,
 	) func(context.Context) error {
 		return func(context.Context) error { return nil }
 	}

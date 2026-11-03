@@ -270,6 +270,12 @@ func (s *AgentCollaboration) resumeParent(ctx context.Context, b *collaboration.
 	if s.streams == nil || s.ParentEvents == nil {
 		return errors.New("parent stream executor unavailable")
 	}
+	// Recovery runs under a scheduler context, without the normal QA handler's
+	// user-stop lifetime. Keep a cancellable context through final synthesis:
+	// closing an exhausted collaboration no longer leaves an active group for
+	// StopOwned to cancel, but its report must still obey the user's stop event.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
 	// SetLiveRun refuses to displace a different user turn.
 	if err = s.streams.SetLiveRun(ctx, session.ID, answer.ID, answer.RequestID); err != nil {
 		return err
@@ -282,7 +288,7 @@ func (s *AgentCollaboration) resumeParent(ctx context.Context, b *collaboration.
 	answer.Content = ""
 	answer.RunState = ""
 	bus := event.NewEventBus()
-	finish := s.ParentEvents(ctx, session, answer, bus)
+	finish := s.ParentEvents(ctx, session, answer, bus, stop)
 	s.replayStatus(ctx, b)
 	var errorMu sync.Mutex
 	var runErr error
@@ -311,7 +317,7 @@ func (s *AgentCollaboration) resumeParent(ctx context.Context, b *collaboration.
 		KnowledgeBaseIDs: saved.KnowledgeBaseIDs, KnowledgeIDs: saved.KnowledgeIDs, TagScopes: saved.TagScopes,
 		MCPServiceIDs: saved.MCPServiceIDs, SkillNames: saved.SkillNames, WebSearchEnabled: saved.WebSearchEnabled,
 		QuestionOrigin: saved.QuestionOrigin, PageContext: saved.PageContext, AssistantAccess: saved.AssistantAccess,
-		Mode: types.RunModeAttended, Suspendable: true, Resume: &types.AgentResume{Snapshot: data},
+		Mode: types.RunModeAttended, Suspendable: true, Resume: &types.AgentResume{Snapshot: data, ExecutionSettings: saved.ExecutionSettings},
 	}
 	if s.ParentSteer != nil {
 		req.SteerSink = s.ParentSteer(ctx, session, answer)

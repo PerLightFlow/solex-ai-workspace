@@ -368,6 +368,17 @@ func (h *Handler) startStopWatcher(
 	sessionID, assistantMessageID string,
 	eventBus *event.EventBus,
 ) {
+	h.watchStopEvents(ctx, sessionID, assistantMessageID, eventBus, true)
+}
+
+// Resumed scheduler runs share an existing stream and own a bounded execution
+// context; they must ignore old completion markers while still honoring stops.
+func (h *Handler) watchStopEvents(
+	ctx context.Context,
+	sessionID, assistantMessageID string,
+	eventBus *event.EventBus,
+	stopAtCompletion bool,
+) {
 	go func() {
 		watchCtx, cancel := context.WithTimeout(ctx, stopWatcherMaxDuration)
 		defer cancel()
@@ -403,10 +414,10 @@ func (h *Handler) startStopWatcher(
 							},
 						})
 						return
-					case evt.Type == types.ResponseTypeComplete:
+					case stopAtCompletion && evt.Type == types.ResponseTypeComplete:
 						// Generation finished normally; nothing left to stop.
 						return
-					case evt.Type == types.ResponseTypeError && evt.Done:
+					case stopAtCompletion && evt.Type == types.ResponseTypeError && evt.Done:
 						// Stream-level (terminal) error; generation has ended.
 						return
 					}

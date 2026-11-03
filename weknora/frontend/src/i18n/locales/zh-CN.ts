@@ -4569,6 +4569,7 @@ export default {
         failed: '重置失败'
       },
       messages: {
+        integerRange: '{label} 必须是 {min}–{max} 之间的整数',
         loadFailed: '加载系统设置失败',
         saveSuccess: '已保存',
         saveFailed: '保存失败'
@@ -4610,6 +4611,10 @@ export default {
         }
       },
       keyDescriptions: {
+        agent: {
+          max_iterations: '单次任务最多执行的推理与工具调用步骤，默认 50 步，可设置 1–200 步。这是执行步骤上限，不是聊天消息条数。',
+          collaboration_wait_timeout_seconds: '没有新进展时，协作等待请求至少使用此时长，默认 30 秒，可设置 1–60 秒；请求更长时最多等待 60 秒。有新结果或用户输入时可提前结束等待。'
+        },
         model: {
           max_concurrency: '后台任务（文档入库/富化）对单个模型的默认并发上限，按模型 ID 全副本共享。每次调用实时读取，修改后立即生效、无需重启。0 或负数表示关闭默认限制（各模型仍会尊重自身在模型管理里配置的上限）。仅影响后台任务，不影响交互式对话。'
         },
@@ -4642,6 +4647,10 @@ export default {
         }
       },
       keyLabels: {
+        agent: {
+          max_iterations: '单次任务执行步数上限',
+          collaboration_wait_timeout_seconds: '协作无更新等待时长（秒）'
+        },
         model: {
           max_concurrency: '模型默认并发上限'
         },
@@ -4881,6 +4890,10 @@ export default {
         }
       },
       sections: {
+        agentRuntime: {
+          title: '智能体运行',
+          description: '由系统管理员统一配置，所有用户和智能体的新任务自动继承。保存后无需重启；已开始的任务、子任务与恢复执行沿用启动时的设置。'
+        },
         other: {
           title: '其他配置',
           description: '当前部署中未归入标准分组的配置项。'

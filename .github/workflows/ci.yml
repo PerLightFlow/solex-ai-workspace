@@ -42,6 +42,9 @@ jobs:
         run: |
           go test -timeout 10m \
             ./internal/types \
+            ./internal/runtime \
+            ./internal/agent \
+            ./internal/agent/collaboration \
             ./internal/application/repository \
             ./internal/application/service \
             ./internal/handler \
@@ -49,6 +52,7 @@ jobs:
             ./internal/router \
             ./internal/database \
             ./internal/container
+          go test -timeout 2m ./internal/agent/tools -run '^TestCollaboration' -count=1
 
   frontend:
     name: SOLEX UI regression tests, types and build
@@ -83,6 +87,7 @@ jobs:
             src/views/agent/AgentEditorModal.test.mjs \
             src/views/agent/AgentList.test.ts \
             src/views/agent/managedAgentSave.test.ts \
+            src/views/system/agentRuntimeSettings.test.ts \
             src/views/knowledge/components/DocumentFolderEntries.test.ts \
             src/views/settings/SkillSettings.filters.test.ts
       - run: npm run type-check

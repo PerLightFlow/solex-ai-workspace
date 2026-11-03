@@ -455,7 +455,11 @@ func (s *AutomationService) resumeState(ctx context.Context, run *types.Automati
 	if err := s.messages.UpdateMessage(ctx, answer); err != nil {
 		return nil, nil, nil, nil, stop, err
 	}
-	resume = &types.AgentResume{Snapshot: []byte(snapshot.Snapshot), Prompt: prompt}
+	executionSettings, err := executionSettingsFromSnapshot(snapshot.Snapshot)
+	if err != nil {
+		return nil, nil, nil, nil, stop, fmt.Errorf("decode automation approval request: %w", err)
+	}
+	resume = &types.AgentResume{Snapshot: []byte(snapshot.Snapshot), Prompt: prompt, ExecutionSettings: executionSettings}
 	return session, &types.Message{ID: run.UserMessageID}, answer, resume, stop, nil
 }
 

@@ -29,12 +29,17 @@ type ResolveDelegatedAgent func(context.Context, string) (string, error)
 // CollaborationTool executes a collaboration command within its runtime binding.
 type CollaborationTool struct {
 	BaseTool
-	binding *collaboration.Binding
-	resolve ResolveDelegatedAgent
+	binding     *collaboration.Binding
+	resolve     ResolveDelegatedAgent
+	waitTimeout time.Duration
 }
 
 // NewCollaborationTools builds the tool set available to a parent or child execution.
-func NewCollaborationTools(b *collaboration.Binding, resolve ResolveDelegatedAgent) []types.Tool {
+func NewCollaborationTools(b *collaboration.Binding, resolve ResolveDelegatedAgent, waitTimeoutSeconds ...int) []types.Tool {
+	waitSeconds := 30
+	if len(waitTimeoutSeconds) > 0 && waitTimeoutSeconds[0] >= 1 && waitTimeoutSeconds[0] <= 60 {
+		waitSeconds = waitTimeoutSeconds[0]
+	}
 	defs := []struct {
 		name, description, properties string
 		required                      []string
@@ -129,10 +134,12 @@ func NewCollaborationTools(b *collaboration.Binding, resolve ResolveDelegatedAge
 				"bodies separately. interrupted=true means user input is ready, not a child " +
 				"failure. Tool telemetry does not wake the model. Approval/input waiting and " +
 				"resumption are delivered once per state transition; approval cards and " +
-				"decisions are handled by the runtime.\nDefault 30000 ms, range 1000–60000 ms. " +
-				"Prefer longer waits when blocked. Timeout leaves child execution unchanged.",
+				"decisions are handled by the runtime.\nThe administrator's minimum wait applies " +
+				"even when timeout_ms is shorter, to prevent repeated short polling. Notifications " +
+				"and user input still wake it immediately. Longer requests up to 60000 ms are honored. " +
+				"Each completed wait still consumes a reasoning round. Timeout leaves child execution unchanged.",
 			"\"timeout_ms\":{\"type\":\"integer\",\"minimum\":1000,\"maximum\":60000,\"description\":\"Max" +
-				"imum wait duration in milliseconds, default 30000. Child notifications and user " +
+				"imum requested wait in milliseconds, subject to the administrator's minimum. Child notifications and user " +
 				"input can end it earlier.\"}",
 			nil,
 		},
@@ -159,7 +166,10 @@ func NewCollaborationTools(b *collaboration.Binding, resolve ResolveDelegatedAge
 		schema := `{"type":"object","properties":{` + d.properties + `},"required":` + string(
 			required,
 		) + `,"additionalProperties":false}`
-		out = append(out, &CollaborationTool{NewBaseTool(d.name, d.description, json.RawMessage(schema)), b, resolve})
+		out = append(out, &CollaborationTool{
+			BaseTool: NewBaseTool(d.name, d.description, json.RawMessage(schema)),
+			binding:  b, resolve: resolve, waitTimeout: time.Duration(waitSeconds) * time.Second,
+		})
 	}
 	return out
 }
@@ -227,7 +237,11 @@ func (t *CollaborationTool) Execute(ctx context.Context, args json.RawMessage) (
 		err = b.Runtime.Interrupt(ctx, b.Scope, in.Target, in.Expected)
 		out = map[string]bool{"cancellation_requested": err == nil}
 	case "wait_agent":
-		ms := 30000
+		minimum := t.waitTimeout
+		if minimum <= 0 {
+			minimum = 30 * time.Second
+		}
+		ms := int(minimum / time.Millisecond)
 		if in.Timeout != nil {
 			ms = *in.Timeout
 		}
@@ -235,7 +249,7 @@ func (t *CollaborationTool) Execute(ctx context.Context, args json.RawMessage) (
 			err = errors.New("timeout_ms must be between 1000 and 60000")
 			break
 		}
-		until := time.Now().Add(time.Duration(ms) * time.Millisecond)
+		until := time.Now().Add(max(time.Duration(ms)*time.Millisecond, minimum))
 		if !b.WaitUntil.IsZero() {
 			until = b.WaitUntil
 			b.WaitUntil = time.Time{}

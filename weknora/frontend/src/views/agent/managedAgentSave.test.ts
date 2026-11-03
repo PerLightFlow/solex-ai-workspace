@@ -19,7 +19,7 @@ function harness(managed: boolean, system = false, admin = false) {
     props: { readOnly: false, systemBuiltin: system }, authStore: { isSystemAdmin: admin }, systemAgentConfig,
     handleClose() { closed = true },
     createSystemAgent: async (payload: any) => { globalSaved.push(payload); return { data: { id: 'builtin-global', config: payload.config } } },
-    managedRuntime: { value: managed }, isBuiltinAgent: { value: false }, isAgentMode: { value: true },
+    managedRuntime: { value: managed }, usesGlobalAgentBudget: { value: managed }, isBuiltinAgent: { value: false }, isAgentMode: { value: true },
     formData: { value: { name: 'Personal hardware agent', config: {
       system_prompt: 'Answer hardware questions', model_id: '',
       question_suggestions: { starters: { items: ['Which chip?'] } },
@@ -54,6 +54,26 @@ test('unmanaged editor still requires a model and does not submit an incomplete 
   await h.context.save()
   assert.deepEqual(h.errors, ['agent.editor.modelRequired'])
   assert.equal(h.saved.length, 0)
+})
+
+test('managed deployment administrators cannot replay an old per-agent execution budget', async () => {
+  const h = harness(false, false, true)
+  h.context.usesGlobalAgentBudget.value = true
+  Object.assign(h.context.formData.value.config, { model_id: 'admin-model', max_iterations: -1 })
+  await h.context.save()
+  assert.deepEqual(h.errors, [])
+  assert.equal(h.saved.length, 1)
+  assert.equal(h.saved[0].config.max_iterations, undefined)
+  assert.equal(h.saved[0].config.model_id, 'admin-model')
+  assert.equal(h.context.formData.value.config.max_iterations, -1)
+})
+
+test('unmanaged deployments retain the selected per-agent execution budget', async () => {
+  const h = harness(false, false, true)
+  Object.assign(h.context.formData.value.config, { model_id: 'admin-model', max_iterations: 20 })
+  await h.context.save()
+  assert.deepEqual(h.errors, [])
+  assert.equal(h.saved[0].config.max_iterations, 20)
 })
 
 

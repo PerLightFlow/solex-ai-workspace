@@ -40,7 +40,7 @@ type AgentCollaboration struct {
 	gate          approval.BuiltinApproval
 	streams       interfaces.StreamManager
 	ParentSteer   func(context.Context, *types.Session, *types.Message) types.SteerSink
-	ParentEvents  func(context.Context, *types.Session, *types.Message, *event.EventBus) func(context.Context) error
+	ParentEvents  func(context.Context, *types.Session, *types.Message, *event.EventBus, context.CancelFunc) func(context.Context) error
 	ChildEvents   func(context.Context, *types.Session, *types.Message, *event.EventBus) func(context.Context) error
 }
 
@@ -182,8 +182,9 @@ func (s *AgentCollaboration) prune(ctx context.Context) error {
 }
 
 type delegatedConfig struct {
-	Agent  types.CustomAgent          `json:"agent"`
-	Access types.AssistantAccessLevel `json:"access"`
+	ExecutionSettings *types.AgentExecutionSettings `json:"execution_settings,omitempty"`
+	Agent             types.CustomAgent             `json:"agent"`
+	Access            types.AssistantAccessLevel    `json:"access"`
 	// Durable execution identity follows children across scheduler instances
 	// and approval resumes; it must not turn an automation into a human turn.
 	ActingVia string        `json:"acting_via,omitempty"`
@@ -302,8 +303,21 @@ func (s *AgentCollaboration) attach(
 			if strings.TrimSpace(id) == "" {
 				return inheritedChildSnapshot(ctx, cfg, registry.ListTools())
 			}
-			return s.resolveDelegated(ctx, id, cfg.AssistantAccess, cfg.OperationsAgentID != "")
-		}) {
+			raw, err := s.resolveDelegated(ctx, id, cfg.AssistantAccess, cfg.OperationsAgentID != "")
+			if err != nil {
+				return "", err
+			}
+			var saved delegatedConfig
+			if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+				return "", err
+			}
+			saved.ExecutionSettings = types.AgentExecutionSettingsFromConfig(cfg)
+			if !types.ManagedRuntimeEnabled() {
+				saved.ExecutionSettings.MaxIterations = saved.Agent.Config.MaxIterations
+			}
+			encoded, err := json.Marshal(saved)
+			return string(encoded), err
+		}, cfg.CollaborationWaitTimeoutSeconds) {
 		registry.RegisterTool(tool)
 	}
 	if b.Child == nil {
@@ -506,7 +520,11 @@ func (s *AgentCollaboration) run(ctx context.Context, w collaboration.Work) (col
 		if snapshot == nil || snapshot.PromptID != prompt.ID {
 			return result, errors.New("child approval snapshot missing")
 		}
-		resume = &types.AgentResume{Snapshot: []byte(snapshot.Snapshot), Prompt: prompt}
+		executionSettings, err := executionSettingsFromSnapshot(snapshot.Snapshot)
+		if err != nil {
+			return result, fmt.Errorf("decode child approval request: %w", err)
+		}
+		resume = &types.AgentResume{Snapshot: []byte(snapshot.Snapshot), Prompt: prompt, ExecutionSettings: executionSettings}
 		answer, err = s.messages.GetMessage(ctx, session.ID, w.Run.MessageID)
 		if err != nil {
 			return result, err

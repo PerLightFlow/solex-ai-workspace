@@ -153,7 +153,7 @@
                   :aria-label="keyLabel(item.key)" :disabled="savingKey === item.key" @change="onChange(item)" />
                 <t-input-number v-else-if="item.value_type === 'int'" v-model="editValues[item.key]"
                   :placeholder="placeholderFor(item)" :aria-label="keyLabel(item.key)"
-                  :disabled="savingKey === item.key" theme="normal" :step="1" :min="minimumFor(item)"
+                  :disabled="savingKey === item.key" theme="normal" :step="1" :min="minimumFor(item)" :max="maximumFor(item)"
                   class="setting-input" @blur="onChange(item)" />
                 <t-popconfirm v-else-if="item.value_type === 'string_list' && item.key === 'ssrf.whitelist'"
                   v-model:visible="ssrfPopconfirm.visible" :content="ssrfPopconfirm.content"
@@ -255,6 +255,7 @@ import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 import { PASSWORD_SPECIAL_CHARS } from '@/utils/passwordPolicy'
 import { isSettingValueDirty, resolveCurrentSetting } from './systemSettingsEdit'
 import { STORAGE_QUOTA_KEYS, resolveStorageQuota, formatStorageQuota } from './storageQuota'
+import { AGENT_RUNTIME_SETTING_KEYS, agentRuntimeSettingBounds, isValidAgentRuntimeSettingValue } from './agentRuntimeSettings'
 
 const deploymentCapabilities = useDeploymentCapabilitiesStore()
 
@@ -377,7 +378,7 @@ const savedKey = ref<string | null>(null)
 const saveAnnouncement = ref('')
 let savedKeyTimer: ReturnType<typeof setTimeout> | null = null
 
-type SettingsSection = 'users' | 'access' | 'tenant' | 'runtime' | 'security' | 'other'
+type SettingsSection = 'users' | 'access' | 'tenant' | 'agentRuntime' | 'runtime' | 'security' | 'other'
 
 // Product-oriented order, rather than the registry's alphabetical key order.
 // Unknown/out-of-band rows remain visible in a conditional "Other" tab so the
@@ -397,6 +398,7 @@ const SETTINGS_SECTION_KEYS: Record<Exclude<SettingsSection, 'other' | 'users'>,
     'tenant.auto_create_api_key',
     'tenant.auto_accept_invitation',
   ],
+  agentRuntime: AGENT_RUNTIME_SETTING_KEYS,
   runtime: [
     'asynq.core_concurrency',
     'asynq.enrichment_concurrency',
@@ -420,6 +422,7 @@ const sectionTabs = computed(() => {
     { key: 'access', icon: 'lock-on', label: t('system.globalSettings.sections.access.title') },
     { key: 'users', icon: 'usergroup', label: t('system.globalSettings.userList.rowLabel') },
     { key: 'tenant', icon: 'folder', label: t('system.globalSettings.sections.tenant.title') },
+    { key: 'agentRuntime', icon: 'chat-bubble', label: t('system.globalSettings.sections.agentRuntime.title') },
     { key: 'runtime', icon: 'server', label: t('system.globalSettings.sections.runtime.title') },
     { key: 'security', icon: 'secured', label: t('system.globalSettings.sections.security.title') },
   ]
@@ -427,7 +430,7 @@ const sectionTabs = computed(() => {
   return tabs
 })
 
-const PANEL_KEYS: readonly SettingsSection[] = ['access', 'users', 'tenant', 'runtime', 'security', 'other']
+const PANEL_KEYS: readonly SettingsSection[] = ['access', 'users', 'tenant', 'agentRuntime', 'runtime', 'security', 'other']
 
 function panelFromQuery(): SettingsSection | null {
   const raw = Array.isArray(route.query.panel) ? route.query.panel[0] : route.query.panel
@@ -626,8 +629,14 @@ function placeholderFor(item: SystemSettingItem): string {
 }
 
 function minimumFor(item: SystemSettingItem): number {
+  const bounds = agentRuntimeSettingBounds(item.key)
+  if (bounds) return bounds.min
   if (item.key.startsWith('asynq.') && item.key.endsWith('_concurrency')) return 1
   return 0
+}
+
+function maximumFor(item: SystemSettingItem): number | undefined {
+  return agentRuntimeSettingBounds(item.key)?.max
 }
 
 async function loadSettings() {
@@ -884,6 +893,12 @@ async function persistSetting(item: SystemSettingItem) {
   savedKey.value = null
   savingKey.value = item.key
   try {
+    if (!isValidAgentRuntimeSettingValue(item.key, newValue)) {
+      const bounds = agentRuntimeSettingBounds(item.key)!
+      throw new Error(t('system.globalSettings.messages.integerRange', {
+        label: keyLabel(item.key), min: bounds.min, max: bounds.max,
+      }))
+    }
     const updated = await updateSystemSetting(item.key, newValue)
     // Replace the row in-place so the table stays at scroll position
     // and other rows' edit state isn't disturbed.
