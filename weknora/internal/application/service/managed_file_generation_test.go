@@ -7,6 +7,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox/allocation"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -158,6 +159,9 @@ func (s managedFileSettingStub) GetString(context.Context, string, string, strin
 func TestManagedFileGenerationProtectsTheSelectedConfiguration(t *testing.T) {
 	t.Setenv("SOLEX_MANAGED_RUNTIME", "true")
 	t.Setenv("SOLEX_RUNTIME_TENANT_ID", "99")
+	t.Setenv("WEKNORA_SANDBOX_DOCKER_ENABLED", "true")
+	allocation.SetUserModeAvailable(true)
+	t.Cleanup(func() { allocation.SetUserModeAvailable(false) })
 	repo := &fakeConfigRepo{entity: &types.TenantSandboxConfigEntity{ID: lentSandboxConfig, TenantID: lenderTenant,
 		SandboxType: "docker", Config: &types.TenantSandboxConfig{SandboxType: "docker",
 			Docker: &types.DockerSandboxConfig{Image: "solex/file-sandbox:test"}}}}
