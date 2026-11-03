@@ -14,6 +14,7 @@ from acceptance import run as accept
 import file_generation_setup
 
 SOURCE = Path(__file__).resolve().parent
+COMPOSE_FILES = str(ROOT / 'compose.yaml') + ':' + str(ROOT / 'compose.file-generation.yaml')
 
 
 def command(*args, timeout=180, binary=False, input=None):
@@ -114,7 +115,7 @@ def deploy():
     env_path = ROOT / '.env'
     old_env = env_path.read_text()
     settings = read_env(env_path)
-    if settings.get('COMPOSE_FILE', 'compose.yaml') not in ('compose.yaml', 'compose.yaml:compose.file-generation.yaml'):
+    if settings.get('COMPOSE_FILE', 'compose.yaml') not in ('compose.yaml', 'compose.yaml:compose.file-generation.yaml', COMPOSE_FILES):
         raise RuntimeError('Review existing Compose overrides before enabling file generation')
     if command('docker', 'image', 'inspect', '--format', '{{.Id}}', file_generation_setup.IMAGE) != file_generation_setup.IMAGE_ID:
         raise RuntimeError('Build and verify the pinned file sandbox image before deploying')
@@ -151,7 +152,7 @@ def deploy():
         sql("BEGIN; UPDATE models SET is_builtin=true WHERE tenant_id=10000 AND deleted_at IS NULL; UPDATE mcp_services SET is_builtin=true WHERE tenant_id=10000 AND deleted_at IS NULL; COMMIT;")
         new_env = replace_env(old_env, {'WEKNORA_APP_IMAGE':meta['app_image'], 'WEKNORA_UI_IMAGE':meta['ui_image'],
             'SOLEX_MANAGED_RUNTIME':'true', 'SOLEX_RUNTIME_TENANT_ID':'10000',
-            'COMPOSE_FILE':'compose.yaml:compose.file-generation.yaml'})
+            'COMPOSE_FILE': COMPOSE_FILES})
         private_write(overlay, (SOURCE / 'compose.file-generation.yaml').read_text())
         private_write(env_path, new_env)
         compose()
