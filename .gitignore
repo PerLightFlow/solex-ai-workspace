@@ -1,27 +1,28 @@
+# Local environments and credentials
 .env
+.env.*
+!.env.example
 .venv/
+*.pem
+*.key
+*credentials*.json
+admin.json
+login.json
+
+# Dependencies, builds and test output
+node_modules/
 __pycache__/
 *.py[cod]
-node_modules/
-frontend/dist/
-media/
-staticfiles/
 *.sqlite3
 .pytest_cache/
 coverage.xml
 .coverage
-frontend/playwright-report/
-frontend/test-results/
+weknora/frontend/dist/
+playwright-report/
+test-results/
 
-# Local credentials, generated diagnostics and release artifacts
-.env.*
-!.env.example
-*.pem
-*.key
-*credentials*.json
-backend/official-source-probe.json
-backend/requirements.resolved.txt
-work/
-releases/
-backups/
+# Local deployment state and artifacts
+/work/
+/releases/
+/backups/
 *.log

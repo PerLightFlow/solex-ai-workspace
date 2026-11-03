@@ -4,7 +4,7 @@
 
 默认提示词以 `Solex` 介绍助手，不包含研发公司归属。完整发布包同时复制明确列出的公共提示词模板及 `builtin_agents.yaml`，不打包本地 `config.yaml` 或模型凭据。技术模块名、稳定模板 ID 和上游许可证保留。
 
-仅更新本次品牌文案可使用 `deploy-prompts.py`：发布目录包含 `release.json`（完整 `source_revision`）、`api_client.py`、该脚本，以及 `config/` 下的 `builtin_agents.yaml` 和四个模板文件 `agent_system_prompt.yaml`、`intent_prompts.yaml`、`system_prompt.yaml`、`fallback.yaml`（模板仍位于 `prompt_templates/`）。用校验 `SHA256SUMS` 的 `apply.sh` 调用脚本，经服务器发布助手执行。它在当前镜像上叠加这五个配置文件，只重启 app；备份存于原生部署目录的 `prompt-releases/`。只同步未自定义、未删除且完全匹配旧默认正文的内置记录，管理员自定义提示词不覆盖；用户通过模板 ID 继承的提示词自动更新。验收比对管理员和普通用户模板 API，失败分别尝试恢复旧镜像和已同步正文。现有浏览器须刷新以清除模板缓存。
+公共默认模板随完整发布更新；数据库中管理员已保存的自定义提示词不会被覆盖。已完成的一次性品牌数据迁移工具已移除，历史实现保留在 Git。
 
 ## 行为
 

@@ -1,108 +1,115 @@
-name: Test and build
+name: SOLEX test and build
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
+    name: Backend unit and regression tests
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: chipagent
-          POSTGRES_PASSWORD: ci-password
-          POSTGRES_DB: chipagent
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U chipagent"
-          --health-interval 5s --health-timeout 5s --health-retries 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: weknora
     env:
-      DJANGO_SECRET_KEY: ci-only-not-for-production
-      POSTGRES_USER: chipagent
-      POSTGRES_PASSWORD: ci-password
-      POSTGRES_DB: chipagent
-      POSTGRES_HOST: localhost
+      CGO_ENABLED: '1'
+      GOMAXPROCS: '4'
+      GOFLAGS: -mod=readonly
+      WEKNORA_LOG_FORMAT: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: weknora/go.mod
+          cache-dependency-path: weknora/go.sum
+      - name: Resolve mocked URL-validation hostnames deterministically
+        # These public IPs are used only for validation in mocked tests.
+        run: |
+          printf '%s\n' '93.184.216.34 example.com' '8.8.8.8 api.e2b.app' | sudo tee -a /etc/hosts >/dev/null
+      - name: Test current application packages
+        # Unit tests do not link the AnyDoc engine. Production binaries must
+        # still use deploy/solex-runtime/build-backend.sh (CGO + AnyDoc).
+        run: |
+          go test -timeout 10m \
+            ./internal/types \
+            ./internal/application/repository \
+            ./internal/application/service \
+            ./internal/handler \
+            ./internal/handler/session \
+            ./internal/router \
+            ./internal/database \
+            ./internal/container
+
+  frontend:
+    name: SOLEX UI regression tests, types and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: weknora/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: weknora/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Run SOLEX workflow regression tests
+        run: |
+          npm test -- \
+            src/config/managedRuntime.test.ts \
+            src/config/systemAgents.test.ts \
+            src/stores/assistant.branding.test.ts \
+            src/stores/chatResources.test.ts \
+            src/utils/branding.test.ts \
+            src/utils/knowledgeAttribution.test.ts \
+            src/components/Input-field.focus.test.mjs \
+            src/components/modelSelectorFilter.test.ts \
+            src/components/document-attribution.integration.test.ts \
+            src/composables/useKnowledgeActivity.test.ts \
+            src/composables/useSkillInstallerModel.test.ts \
+            src/hooks/useKnowledgeBase.test.ts \
+            src/views/agent/AgentEditorModal.test.mjs \
+            src/views/agent/AgentList.test.ts \
+            src/views/agent/managedAgentSave.test.ts \
+            src/views/knowledge/components/DocumentFolderEntries.test.ts \
+            src/views/settings/SkillSettings.filters.test.ts
+      - run: npm run type-check
+      - run: npm run build
+        env:
+          VITE_FRONTEND_COMMIT: ${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solex-frontend
+          path: weknora/frontend/dist/
+          if-no-files-found: error
+
+  deployment:
+    name: Release packaging and rollback unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r backend/requirements.txt
-      - run: python manage.py check
-        working-directory: backend
-      - run: python manage.py makemigrations --check --dry-run
-        working-directory: backend
-      - run: python manage.py test core.tests assistant -v 2
-        working-directory: backend
-      - run: python deploy/weknora/test_bootstrap.py
-      - name: Probe public official discovery (diagnostic)
-        run: python probe_official.py
-        working-directory: backend
-        timeout-minutes: 4
-      - uses: actions/upload-artifact@v4
-        with:
-          name: official-source-probe
-          path: backend/official-source-probe.json
-      - run: pip freeze > backend/requirements.resolved.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: python-dependencies
-          path: backend/requirements.resolved.txt
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci --no-audit --no-fund
-        working-directory: frontend
-      - run: npm run build
-        working-directory: frontend
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: |
-            frontend/dist
-            frontend/package-lock.json
-  smoke:
-    runs-on: ubuntu-latest
-    needs: [backend, frontend]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Configure isolated test environment
+      # Both suites use temporary directories and synthetic fixtures. Live
+      # acceptance scripts require a deployed service and are not CI tests.
+      - run: python -m unittest discover -s deploy/solex-runtime -p 'test_*.py' -v
+      - run: python -m unittest discover -s deploy/solex-ui -p 'test_*.py' -v
+      - name: Check release shell syntax
         run: |
-          cp .env.example .env
-          sed -i 's/replace-with-a-long-random-value/ci-only-not-for-production/' .env
-          sed -i 's/replace-with-a-long-random-password/ci-only-database-password/' .env
-      - run: docker compose up --build -d --wait --wait-timeout 180
-      - name: Provision test user and fixtures
-        run: |
-          docker compose exec -T -e DJANGO_SUPERUSER_USERNAME=ui-test -e DJANGO_SUPERUSER_EMAIL=ci@example.invalid -e DJANGO_SUPERUSER_PASSWORD=local-ui-test-only backend python manage.py createsuperuser --noinput
-      - run: npm ci --no-audit --no-fund
-        working-directory: frontend
-      - run: npx playwright install --with-deps chromium
-        working-directory: frontend
-      - run: npm run test:e2e
-        working-directory: frontend
-        env:
-          APP_URL: http://127.0.0.1:8080
-      - name: Container logs on failure
-        if: failure()
-        run: docker compose logs --tail 100
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: browser-test-results
-          path: |
-            frontend/playwright-report
-            frontend/test-results
-      - run: docker compose down -v
-        if: always()
+          for script in deploy/solex-runtime/build-backend.sh deploy/solex-runtime/apply.sh deploy/solex-ui/apply.sh; do
+            bash -n "$script"
+          done

@@ -1,79 +1,54 @@
-# 企业研发助手 · v0.3
+# SOLEX 企业知识工作台
 
-通过连续对话梳理产品需求、联网调研芯片，并查询和维护企业项目知识。保留原有账号和管理员体系。
+本仓库维护当前部署的 SOLEX：基于完整 WeKnora v0.9.0 源码，提供智能体对话、企业知识库、文档检索与 Wiki。模型、工具连接和运行参数由系统管理员统一配置，普通用户直接使用。
 
-## 使用流程
+## 当前代码入口
 
-1. 在登录页选择“没有账号？创建账号”，填写用户名、密码和确认密码，注册后自动登录；已有账号可直接登录。登录后直接描述产品想法。助手每轮追问关键缺口，保存本会话需求摘要，并自主安排搜索；可以随时纠正条件、停止或继续。
-2. 调研结果通常比较 3–5 个候选，说明接口与参数、适配条件、风险和来源。来源不足时明确未知。候选不依赖预先建立的芯片目录。
-3. 在“企业知识”上传文字 PDF、DOCX、XLSX/CSV、Markdown/TXT，或直接粘贴文字；解析后先查看预览，再确认共享。新版本、撤回及原件下载均保留入口。
-4. 在“项目卡片”维护项目代号、别名、模块、芯片、负责人/参与人、依据与生效日期；也可以在对话中要求整理。助手提出的变更需要在页面确认，才会进入共享知识。
-5. 最近对话右侧可删除对话，确认后生效；正在调研时需先停止。回答完成后调研进度自动隐藏。
-6. 所有登录用户共享已确认知识；个人聊天、需求摘要和临时调研结果私有。普通用户维护自己的贡献，跨用户修改交管理员确认，版本冲突不覆盖。
+| 路径 | 用途 |
+| --- | --- |
+| [`weknora/`](weknora/) | 完整应用源码，含 SOLEX 定制、测试、迁移、第三方代码和许可证 |
+| [`weknora/frontend/`](weknora/frontend/) | Vue 3 / TypeScript 前端，界面修改入口 |
+| [`weknora/internal/`](weknora/internal/) | Go 后端业务、接口和权限检查 |
+| [`deploy/solex-runtime/`](deploy/solex-runtime/README.md) | 后端构建、完整版本打包、发布、验收及回退 |
+| [`deploy/solex-ui/`](deploy/solex-ui/README.md) | 仅前端修改时的独立发布及回退 |
+| [`deploy/solex-infra/`](deploy/solex-infra/README.md) | 当前 Docker Compose 拓扑及搜索配置模板 |
+| [`SOLEX.md`](SOLEX.md) | 上游来源、完整源码校验、开发位置和升级方式 |
+| [`docs/ui-design.md`](docs/ui-design.md) | SOLEX 品牌、界面和协议兼容约束 |
 
-模型漏保存需求摘要时，应用会在私有摘要中保留用户本轮原话，明确标注提问不等于已确认事实。原话补充有上下文长度上限，完整聊天记录保持；正常调用摘要工具后使用其整理结果。
+旧 Django 后端、旧自研前端、芯片规则库、项目卡片和过渡知识库适配服务已退役，不再作为第二套应用维护。其代码、旧发布记录和一次性迁移脚本保留在 Git 历史中，可从清理前提交 `40b9cd8df4b6ea00c42edc00ab63e57da023af80` 查询。
 
-正式知识回答采用项目结构化查询与 WeKnora 文档检索，包含来源和版本。服务器已直接切换到 `weknora`：同步已确认资料，使用本地向量与关键词检索，不运行对照查询或自动回退到旧检索。旧版个人选型记录与规则 API 继续保留，旧入口说明见 [v0.1 文档](docs/v01-readme.md)。
+## 已部署功能
 
-## 源码与版本管理
+- 管理员统一管理模型、MCP、联网搜索和运行配置；普通用户保留智能体提示词、知识库与已开放工具的业务选择。
+- 系统管理员可添加、修改和移除全局内置智能体，所有工作空间使用同一份定义；个人智能体和私有聊天保持原权限。
+- 企业资料通过知识库成员或组织共享，结合原文检索和 Wiki 回答；注册账户本身不等于获得所有知识库权限。
+- 文件展示上传人、上传时间、最后修改人和人工修改时间；有读取权限的用户可查看文件操作记录。后台解析不覆盖人工归属，历史来源不明时显示未知。
 
-源码统一维护于 [PerLightFlow/select-chip-agent](https://github.com/PerLightFlow/select-chip-agent)，默认分支为 `main`。仓库根目录包含 `backend/`、`frontend/`、`deploy/` 和 `docs/`；需求、设计决策与术语也随代码保存。数据库、上传资料、模型密钥、镜像包、验收运行产物和日志不进入 Git。
+详细行为及权限边界见 [运行版本说明](deploy/solex-runtime/README.md)。
 
-2026-10-30 已部署网页、HTTP 后端和后台任务 `weknora-v030`，健康 API 版本为 `0.3.0`。本阶段代码尚未提交 Git。部署及验收见 [v0.3.0 发布记录](docs/deployment/2026-10-30-weknora-v030.md)，此前安装说明见 [运行说明](docs/operations-v02.md)，需求见 [已确认需求](docs/requirements/2026-10-29-agent-reframing.md)。
-
-WeKnora 第一阶段已部署已确认文档同步、原文检索、版本引用、独立 worker 和可回退的检索开关；使用独立 WeKnora v0.9.0 与本地 `qwen3-embedding:0.6b`。基础开发模板默认 `legacy`，WeKnora 发布脚本和当前服务器采用 `weknora`；Wiki 尚未启用。部署与恢复步骤见 [WeKnora 运行说明](deploy/weknora/README.md)，设计与边界见 [接入方案](docs/design/2026-10-29-weknora-integration.md)。
-
-## Docker 启动
-
-```bash
-cp .env.example .env
-# 填写随机 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、SEARXNG_SECRET，以及模型配置
-# .env 只保存在服务器，chmod 600 .env
-docker compose up --build -d
-docker compose exec backend python manage.py createsuperuser
-```
-
-访问 `http://localhost:8080`，管理员通过 `/admin/` 管理账号。支持用户自助注册并立即启用；新账号固定为普通用户，可读取共享企业知识，不能进入管理员后台。内网既有安装的绑定路径与发布流程见 [运行说明](docs/operations-v02.md)。
-
-Agent 默认通过 Chat Completions 调用现有火山 Kimi，由应用控制对话与工具循环、账号、会话、企业知识、确认和后台队列。固定版本 Codex App Server 0.163.0 保留为显式可选运行层，只获得业务工具，不开放终端或用户文件环境。搜索由独立 SearXNG 容器提供，后台任务负责公开 HTTPS 来源读取。公共搜索仅接受预定义技术词及受限制的芯片型号，内部资料通过必要片段用于企业问答。
-
-```dotenv
-LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-LLM_API_KEY=<方舟 API Key>
-LLM_MODEL=kimi-k3-1-pro-261024
-AGENT_RUNTIME=chat
-AGENT_SEARCH_ENGINES=google cse
-AGENT_WORKERS=50
-AGENT_MAX_STEPS=16
-AGENT_TURN_SECONDS=300
-AGENT_MODEL_TIMEOUT=120
-# 当前火山 Kimi 的 Chat Completions 参数
-LLM_THINKING=disabled
-LLM_TEMPERATURE=0.6
-```
-
-修改模型配置后重新创建 backend、worker、agent-worker。Responses 基础测试与真实 Codex 动态工具调用已通过，但 Codex 完整调研曾多次达到 300 秒上限。相同模型与业务工具的 Chat 方式完成了追问、调研、修正和企业问答，因此按已确认的体验优先原则作为默认。`AGENT_RUNTIME=codex` 可显式选择；运行失败不会自动切换提供方或协议。
-
-当前搜索使用验收中返回有效结果的 `google cse` 引擎；可用 `AGENT_SEARCH_ENGINES` 配置 SearXNG 引擎名称。批量查询使用精确型号，标题或 URL 不匹配的结果不会作为该候选证据。完成一批候选核查后直接整理首份结果及证据缺口，进一步查询由后续对话继续。外部引擎仍可能限流或变化，需要持续维护。
-
-## 验证与边界
-
-v0.3.0 已通过 106 项后端测试、2 项 bootstrap 协议测试、10 项浏览器测试和前端构建。真实 WeKnora API 已分别验证向量与关键词检索；独立 Django 数据库验收通过草稿隔离、发布同步、版本引用、撤回过滤和异步删除。正式服务及静态资源健康检查通过。详细证据与限制见 [发布记录](docs/deployment/2026-10-30-weknora-v030.md)。
-
-以下是 v0.2.5 原检索架构的历史结果，不能作为 WeKnora 容量验收：200 个合成账号、10,000 份文字资料、50,000 片段，50 个并发检索全部正确，P95 2.432 秒；另行运行的 50 个真实模型与联网调研任务全部成功，P50 83.46 秒、P95 118.50 秒。并发调研覆盖五类视觉需求、共同三款候选与公开资料缓存，合成文字不能代表实际企业 PDF/表格分布，也不是任意负载 SLA。其他复测曾出现一次模型 120 秒超时，5 并发阶段最慢 191.80 秒；详细成功数和失败记录均保留在发布报告。
-
-当前不包含扫描件/OCR、企业系统自动同步、模型部署到芯片或实机性能验证。单文档最多 10 MiB；网络 PDF 最多读取前 20 页且输出有长度上限，复杂表格需核对原件。搜索引擎可能限流或出现验证码；失败会保留输入，不以虚构参数填补。1–3 分钟首份结果是体验目标，尚未承诺为 SLA。
-
-## 开发检查
+## 本地验证
 
 ```bash
-docker compose exec backend python manage.py test core.tests assistant
-python3 deploy/weknora/test_bootstrap.py
-cd frontend
-npm ci
+cd weknora/frontend
+npm ci --no-audit --no-fund
+npm run type-check
+npm run test -- --run
 npm run build
-# Playwright 测试使用本地隔离账号 ui-test，不对生产站点运行
-npm run test:e2e
 ```
 
-Vite 默认代理 `127.0.0.1:18080`，可通过 `DEV_BACKEND_URL` 覆盖。Codex 原始许可证与声明保存在 `licenses/codex/`，镜像内也包含相同文件。该项目未 fork Codex 源码，业务代码与开源运行层分离维护。
+在仓库根目录运行离线部署工具测试：
+
+```bash
+python3 -m unittest discover -s deploy/solex-runtime -p 'test_*.py'
+python3 -m unittest discover -s deploy/solex-ui -p 'test_*.py'
+```
+
+实际生效的 CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)，验证当前 Go 业务包、SOLEX 前端及部署工具。`weknora/.github/` 随完整上游源码保留，不是本仓库的 Actions 入口。Go 单元测试不替代生产 AnyDoc/CGO 构建；后端生产构建使用 [`build-backend.sh`](deploy/solex-runtime/build-backend.sh)。
+
+## 部署与版本
+
+现有入口为 `http://192.168.85.199:8080`，需从能访问该内网的设备打开。服务与数据位于 `/data/solexai/yongjun/weknora-native`；服务器发布助手仍使用 `/data/solexai/yongjun/select-chip-agent/releases/`。
+
+2026-11-03 只读核对：运行中的 app 与 frontend 镜像均标记源码提交 `40b9cd8df4b6ea00c42edc00ab63e57da023af80`。本次仓库整理保留该版本的完整应用源码，更新目录、文档和 CI，不重新发布容器。后续版本应以实际容器的 `org.opencontainers.image.revision` 和对应发布记录为准。
+
+维护既有实例请使用 [基础设施说明](deploy/solex-infra/README.md) 与 [完整发布流程](deploy/solex-runtime/README.md)。数据库、上传文档、模型文件、密钥、运行日志和发布产物不进入 Git。完整源码与单元测试通过不等于 50 人并发或万份文档容量验收。

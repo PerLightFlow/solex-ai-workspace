@@ -2,7 +2,7 @@
 
 当前原生平台的完整源码位于 [`weknora/`](weknora/)，产品界面名称为 **SOLEX**。
 
-这是直接纳入本仓库 Git 管理的完整上游源码，不是子模块、嵌套仓库或仅前端副本。根目录原有的 `backend/`、`frontend/` 是历史自研系统；新的界面修改应在 `weknora/frontend/` 中进行。
+这是直接纳入本仓库 Git 管理的完整上游源码，不是子模块、嵌套仓库或仅前端副本。全部应用修改均在 `weknora/` 中进行，前端位于 `weknora/frontend/`。旧自研系统与一次性迁移工具已从当前分支移除，历史版本仍可从 Git 查询。
 
 ## 上游基线
 
@@ -37,7 +37,10 @@ npm run dev
 - `weknora/frontend/src/views/settings/SolexHelp.vue`：站内帮助。
 - `weknora/internal/`、`weknora/cmd/`：Go 后端。
 - `weknora/docreader/`：文档解析服务。
-- `deploy/solex-ui/`：现有原生部署的前端发布与回退脚本。
+- `deploy/solex-runtime/`：当前后端与前端的完整构建、发布、验收和回退。
+- `deploy/solex-ui/`：仅修改前端时的独立发布与回退。
+- `deploy/solex-infra/`：当前七服务 Compose 拓扑及搜索配置模板。
+- `.github/workflows/ci.yml`：本仓库生效的 CI；`weknora/.github/` 是上游源码的一部分，不会在本仓库自动运行。
 
 ## Git 维护
 
@@ -55,4 +58,4 @@ git diff 33001f3..HEAD -- weknora/frontend
 
 界面统一为 SOLEX；存储键、API 字段、内置智能体 ID、消息协议及既有嵌入接口保留兼容。新嵌入代码使用 `solex-widget.js`，旧接口仍可工作。用户文档、模型回答和自定义名称不做全局文本替换。
 
-现有 Docker 部署位于 `/data/solexai/yongjun/weknora-native`。界面改版只替换前端容器；模型配置、账号、知识库、Wiki 和其他服务保持现有数据。源码导入和界面构建通过不等同于后端全部测试或生产并发验收。
+现有 Docker 部署位于 `/data/solexai/yongjun/weknora-native`。仅改界面时可只替换前端；涉及后端时使用完整运行版本发布。模型配置、账号、知识库和 Wiki 保存在服务器数据目录中，具体维护步骤见 [当前部署说明](deploy/solex-infra/README.md)。源码导入、构建与单元测试通过不等同于生产并发验收。
