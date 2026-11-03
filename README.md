@@ -1,5 +1,7 @@
 # SOLEX 企业知识工作台
 
+源码仓库：[PerLightFlow/solex-ai-workspace](https://github.com/PerLightFlow/solex-ai-workspace)。
+
 本仓库维护当前部署的 SOLEX：基于完整 WeKnora v0.9.0 源码，提供智能体对话、企业知识库、文档检索与 Wiki。模型、工具连接和运行参数由系统管理员统一配置，普通用户直接使用。
 
 ## 当前代码入口

@@ -44,7 +44,7 @@ npm run dev
 
 ## Git 维护
 
-`origin` 保持为 `PerLightFlow/select-chip-agent`，`weknora-upstream` 指向官方仓库。克隆本仓库即可取得完整源文件，不需要额外初始化子模块。Git remote 配置不会随克隆传播，后续需要追踪上游时执行：
+`origin` 保持为 `PerLightFlow/solex-ai-workspace`，`weknora-upstream` 指向官方仓库。克隆本仓库即可取得完整源文件，不需要额外初始化子模块。Git remote 配置不会随克隆传播，后续需要追踪上游时执行：
 
 ```bash
 git remote add weknora-upstream https://github.com/Tencent/WeKnora.git

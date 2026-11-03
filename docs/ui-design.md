@@ -25,4 +25,4 @@
 
 ## Git 与上游
 
-`origin` 继续指向 `PerLightFlow/select-chip-agent`；`weknora-upstream` 用于读取官方版本。原始源码基线提交记录确切上游 commit，后续定制均能与该基线比较。使用 [当前发布流程](../deploy/solex-runtime/README.md) 或 [独立 UI 发布](../deploy/solex-ui/README.md) 交付，不能直接修改运行中容器的文件。
+`origin` 继续指向 `PerLightFlow/solex-ai-workspace`；`weknora-upstream` 用于读取官方版本。原始源码基线提交记录确切上游 commit，后续定制均能与该基线比较。使用 [当前发布流程](../deploy/solex-runtime/README.md) 或 [独立 UI 发布](../deploy/solex-ui/README.md) 交付，不能直接修改运行中容器的文件。
