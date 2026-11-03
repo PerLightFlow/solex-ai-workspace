@@ -27,6 +27,26 @@
 
 当前 Kimi 配置应保留 `supports_temperature=false` 且不设置 `fixed_temperature`，让提供方按思考模式使用默认采样参数；不能从旧部署样例恢复固定温度。该兼容设置保存在模型记录中，应用发布不重建模型记录或改变已有 Embedding 绑定。
 
+## Embedding 推理线程
+
+`embedding` 容器的 `cpus: 4` 限制 CPU 配额，Ollama 仍可能按宿主机核数创建推理线程。2026-11-03 排查中观察到 64 个线程及小文本请求超时，因此为模型显式设置 4 个推理线程。
+
+[`embedding.Modelfile`](embedding.Modelfile) 只为现有 `qwen3-embedding:0.6b` 设置 `num_thread 4`。同名重建复用模型权重，保留应用中的模型 ID、名称、1024 维配置和知识库绑定。参数保存在现有 `data/models` 挂载卷，容器重建后仍有效。
+
+在服务器 `/data/solexai/yongjun/weknora-native` 下维护：
+
+1. 应用前，将 `ollama show qwen3-embedding:0.6b --modelfile` 的输出，以及 `data/models/models/manifests/registry.ollama.ai/library/qwen3-embedding/0.6b` 原文件备份到 `data/models/solex-config/<备份目录>/`，分别命名为 `original.Modelfile` 和 `original-manifest.json`。`ollama` 命令通过 `docker compose exec -T embedding` 执行。
+2. 将仓库的 `embedding.Modelfile` 复制到 `data/models/solex-config/embedding.Modelfile`，然后应用：
+
+   ```bash
+   docker compose exec -T embedding ollama create qwen3-embedding:0.6b -f /root/.ollama/solex-config/embedding.Modelfile
+   ```
+
+3. 用 `docker compose exec -T embedding ollama show qwen3-embedding:0.6b --parameters` 确认 `num_thread 4`。再以不传 `options` 的默认 Embedding 请求分别检查冷、热加载耗时、返回维度及日志中的实际线程数，最后验证普通用户上传文档和向量检索。
+4. 需要恢复时，使用同一 `ollama create` 命令，将 `-f` 改为 `/root/.ollama/solex-config/<备份目录>/original.Modelfile`，并重新检查参数和检索。保留备份 manifest 供核对原模型身份。
+
+直接 `ollama pull qwen3-embedding:0.6b` 会以远端 manifest 覆盖本地参数配置，之后必须重新应用此 Modelfile 并验证。当前日常应用发布器不会拉取或重建 Embedding 模型；旧的一次性初始化脚本也仅在模型不存在时才执行 pull。
+
 ## 维护已有实例
 
 1. 在完整源码中修改，运行相关检查并提交 Git。
