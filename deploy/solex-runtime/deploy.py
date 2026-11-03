@@ -11,6 +11,7 @@ import time
 from urllib import request
 from api_client import ROOT, Client, private_write, save_json, wait_health, read_env
 from acceptance import run as accept
+import file_generation_setup
 
 SOURCE = Path(__file__).resolve().parent
 
@@ -113,6 +114,14 @@ def deploy():
     env_path = ROOT / '.env'
     old_env = env_path.read_text()
     settings = read_env(env_path)
+    if settings.get('COMPOSE_FILE', 'compose.yaml') not in ('compose.yaml', 'compose.yaml:compose.file-generation.yaml'):
+        raise RuntimeError('Review existing Compose overrides before enabling file generation')
+    if command('docker', 'image', 'inspect', '--format', '{{.Id}}', file_generation_setup.IMAGE) != file_generation_setup.IMAGE_ID:
+        raise RuntimeError('Build and verify the pinned file sandbox image before deploying')
+    overlay = ROOT / 'compose.file-generation.yaml'
+    old_overlay = overlay.read_text() if overlay.exists() else None
+    if old_overlay is not None:
+        private_write(state_dir / 'before-compose.file-generation.yaml', old_overlay)
     for service, key in [('app','WEKNORA_APP_IMAGE'),('frontend','WEKNORA_UI_IMAGE')]:
         running = command('docker','inspect','--format','{{.Image}}','weknora-native-' + service + '-1')
         configured = command('docker','image','inspect','--format','{{.Id}}',settings[key])
@@ -141,7 +150,9 @@ def deploy():
         # Keep original IDs, encrypted credentials, dimensions and model compatibility flags.
         sql("BEGIN; UPDATE models SET is_builtin=true WHERE tenant_id=10000 AND deleted_at IS NULL; UPDATE mcp_services SET is_builtin=true WHERE tenant_id=10000 AND deleted_at IS NULL; COMMIT;")
         new_env = replace_env(old_env, {'WEKNORA_APP_IMAGE':meta['app_image'], 'WEKNORA_UI_IMAGE':meta['ui_image'],
-            'SOLEX_MANAGED_RUNTIME':'true', 'SOLEX_RUNTIME_TENANT_ID':'10000'})
+            'SOLEX_MANAGED_RUNTIME':'true', 'SOLEX_RUNTIME_TENANT_ID':'10000',
+            'COMPOSE_FILE':'compose.yaml:compose.file-generation.yaml'})
+        private_write(overlay, (SOURCE / 'compose.file-generation.yaml').read_text())
         private_write(env_path, new_env)
         compose()
         wait_health()
@@ -151,6 +162,7 @@ def deploy():
             running = command('docker','inspect','--format','{{.Image}}','weknora-native-' + service + '-1')
             expected = command('docker','image','inspect','--format','{{.Id}}',meta[key])
             if running != expected: raise RuntimeError('Running service image does not match this release')
+        file_generation_setup.configure(state_dir)
         checks = accept(state_dir)
         after_bindings = json.loads(sql("SELECT coalesce(json_agg(json_build_object('id',id,'embedding_model_id',embedding_model_id)), '[]') FROM knowledge_bases WHERE deleted_at IS NULL;"))
         old_by_id = {item['id']:item['embedding_model_id'] for item in json.loads(bindings)}
@@ -163,9 +175,19 @@ def deploy():
     except Exception as exc:
         rollback = {'attempted_at':time.time(), 'failure_type':type(exc).__name__,
             'reason':str(exc) if isinstance(exc, RuntimeError) else 'Details omitted',
-            'environment_restored':False, 'model_flags_restored':False, 'services_restored':False}
+            'environment_restored':False, 'model_flags_restored':False, 'services_restored':False,
+            'file_generation_restored':False}
+        try:
+            file_generation_setup.rollback(state_dir)
+            rollback['file_generation_restored'] = True
+        except Exception:
+            pass
         try:
             private_write(env_path, rollback_env)
+            if old_overlay is None:
+                overlay.unlink(missing_ok=True)
+            else:
+                private_write(overlay, old_overlay)
             rollback['environment_restored'] = True
         except Exception:
             pass
@@ -190,7 +212,7 @@ def deploy():
             except Exception:
                 pass
         save_json(state_dir / 'rollback.json', rollback)
-        restored = all(rollback[key] for key in ('environment_restored','model_flags_restored','services_restored'))
+        restored = all(rollback[key] for key in ('environment_restored','model_flags_restored','services_restored','file_generation_restored'))
         status = 'previous app/UI/configuration restored' if restored else 'rollback incomplete; inspect protected rollback.json'
         raise RuntimeError('Release failed; ' + status + ': ' + (str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)) from None
 

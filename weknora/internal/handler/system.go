@@ -2425,6 +2425,21 @@ func (h *SystemHandler) UpdateSystemSetting(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "value is required"})
 		return
 	}
+	if key == service.ManagedFileSandboxKey && req.Value != "" {
+		id, ok := req.Value.(string)
+		if !ok || h.sandboxConfigSvc == nil || !types.ManagedRuntimeEnabled() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文件生成需要管理员配置的统一沙箱"})
+			return
+		}
+		entity, err := h.sandboxConfigSvc.Get(ctx, types.ManagedRuntimeTenantID(), id)
+		if err == nil {
+			err = service.ValidateManagedFileSandbox(entity)
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 
 	row, err := h.systemSettingSvc.Update(ctx, key, req.Value)
 	if err != nil {

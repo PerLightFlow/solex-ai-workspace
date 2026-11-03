@@ -298,6 +298,7 @@ func (s *sessionService) AgentQA(
 	}
 	ctx = context.WithValue(ctx, childSourceKey{}, childSource{
 		Agent: req.CustomAgent, ModelID: effectiveModelID, SandboxConfigID: pin.ConfigID,
+		SandboxConfigTenantID: pin.TenantID,
 	})
 
 	// Create agent engine with EventBus

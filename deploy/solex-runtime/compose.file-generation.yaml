@@ -1,0 +1,6 @@
+services:
+  app:
+    # Only the trusted application controls containers. This socket is never
+    # mounted into a user's execution sandbox.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

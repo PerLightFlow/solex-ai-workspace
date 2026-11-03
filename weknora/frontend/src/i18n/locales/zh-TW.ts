@@ -4389,6 +4389,7 @@ export default {
     graphDatabaseEngineDescription: '當前使用的圖資料庫引擎',
     unknown: '未知',
     globalSettings: {
+      fileGenerationDisabled: '關閉檔案生成',
       title: '系統設定',
       description: '平台級運行時設定，儲存後立即對所有空間生效。僅系統管理員可見可改。',
       loading: '載入中...',
@@ -4612,6 +4613,7 @@ export default {
       },
       keyDescriptions: {
         agent: {
+          file_generation_sandbox_id: '由管理員選擇 Docker 環境，所有使用者直接使用 Python 與 Excel 檔案產生功能，各對話檔案獨立。請先在沙箱設定中建立環境；關閉將撤銷自動執行授權，切換只影響尚未分配沙箱的對話。',
           max_iterations: '單次任務最多執行的推論與工具呼叫步驟，預設 50 步，可設定 1–200 步。這是執行步數上限，不是聊天訊息數量。',
           collaboration_wait_timeout_seconds: '沒有新進展時，協作等待請求至少使用此時間，預設 30 秒，可設定 1–60 秒；請求更長時最多等待 60 秒。有新結果或使用者輸入時可提前結束等待。'
         },
@@ -4648,6 +4650,7 @@ export default {
       },
       keyLabels: {
         agent: {
+          file_generation_sandbox_id: '預設檔案生成環境',
           max_iterations: '單次任務執行步數上限',
           collaboration_wait_timeout_seconds: '協作無更新等待時間（秒）'
         },

@@ -9,7 +9,7 @@ const source = readFileSync(new URL('./SystemSettings.vue', import.meta.url), 'u
 const persist = source.slice(source.indexOf('async function persistSetting('), source.indexOf('\nonMounted('))
 assert.ok(persist.startsWith('async function persistSetting('))
 
-function harness(key: string, original: number, edited: unknown, fail = false) {
+function harness(key: string, original: number | string, edited: unknown, fail = false) {
   const writes: unknown[] = []
   const errors: string[] = []
   const successes: string[] = []
@@ -85,4 +85,15 @@ test('failed server writes restore the canonical value and retain error feedback
   assert.equal(h.context.editValues['agent.max_iterations'], 50)
   assert.equal(h.context.saveAnnouncement.value, 'Server rejected update')
   assert.equal(h.context.savingKey.value, null)
+})
+
+test('administrator can select and disable file generation without numeric coercion', async () => {
+  const key = 'agent.file_generation_sandbox_id'
+  for (const value of ['', '44444444-4444-4444-8444-444444444444']) {
+    const h = harness(key, 'previous-config', value)
+    await h.save()
+    assert.deepEqual(h.writes, [{ key, value }])
+    assert.deepEqual(h.errors, [])
+    assert.equal(h.context.settings.value[0].value, value)
+  }
 })

@@ -116,7 +116,7 @@ func (h *SystemHandler) CheckSandboxConfig(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "msg": "沙箱配置服务不可用"})
 			return
 		}
-		entity, err := h.sandboxConfigSvc.Get(ctx, tenant.ID, req.ConfigID)
+		entity, err := h.sandboxConfigSvc.Get(ctx, sandboxConfigTenantID(c), req.ConfigID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "msg": err.Error()})
 			return

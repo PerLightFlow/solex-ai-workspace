@@ -122,6 +122,9 @@ type sandboxConfigResponse struct {
 }
 
 func sandboxConfigTenantID(c *gin.Context) uint64 {
+	if types.ManagedRuntimeEnabled() && types.IsSystemAdminFromContext(c.Request.Context()) {
+		return types.ManagedRuntimeTenantID()
+	}
 	return c.GetUint64(types.TenantIDContextKey.String())
 }
 

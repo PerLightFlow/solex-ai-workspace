@@ -134,6 +134,9 @@
                       @change="onHighRiskSelectChange(item)" />
                   </div>
                 </t-popconfirm>
+                <t-select v-else-if="item.key === 'agent.file_generation_sandbox_id'" v-model="editValues[item.key]"
+                  :options="fileSandboxOptions" :aria-label="keyLabel(item.key)"
+                  :disabled="savingKey === item.key" class="setting-input" @change="onChange(item)" />
                 <t-select v-else-if="hasEnum(item)" v-model="editValues[item.key]" :options="enumOptions(item)"
                   :aria-label="keyLabel(item.key)" :disabled="savingKey === item.key" class="setting-input"
                   @change="onChange(item)" />
@@ -245,6 +248,8 @@ import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
   listSystemSettings,
+  listSandboxConfigs,
+  type SandboxConfigRecord,
   updateSystemSetting,
   resetSystemSetting,
   applyDefaultStorageQuotaToAllTenants,
@@ -258,6 +263,13 @@ import { STORAGE_QUOTA_KEYS, resolveStorageQuota, formatStorageQuota } from './s
 import { AGENT_RUNTIME_SETTING_KEYS, agentRuntimeSettingBounds, isValidAgentRuntimeSettingValue } from './agentRuntimeSettings'
 
 const deploymentCapabilities = useDeploymentCapabilitiesStore()
+const fileSandboxes = ref<SandboxConfigRecord[]>([])
+const fileSandboxOptions = computed(() => [
+  { label: t('system.globalSettings.fileGenerationDisabled'), value: '' },
+  ...fileSandboxes.value.filter(item => item.sandbox_type === 'docker' && item.config?.allocation_mode !== 'user'
+    && !item.config?.volume_mount && !Object.keys(item.config?.env_vars || {}).length)
+    .map(item => ({ label: item.name, value: item.id })),
+])
 
 const { t, tm, te, locale } = useI18n()
 const route = useRoute()
@@ -643,7 +655,11 @@ async function loadSettings() {
   loading.value = true
   try {
     const list = await listSystemSettings()
-    settings.value = list
+    settings.value = list.filter(item => item.key !== 'agent.file_generation_sandbox_id' || deploymentCapabilities.managedRuntime)
+    if (deploymentCapabilities.managedRuntime) {
+      const configs = await listSandboxConfigs()
+      fileSandboxes.value = configs.data || []
+    }
     // Reset edit values to the canonical state on every load — no
     // partial drafts survive a refresh, which avoids the "I came back
     // and my unsaved edits look saved" trap.

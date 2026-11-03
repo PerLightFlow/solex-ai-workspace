@@ -296,6 +296,16 @@ func resolveSandboxForExecution(
 	if o.liteOnly {
 		return resolveLiteSandbox(ctx, policy, tenantID, agentConfigID, o), SandboxPin{}, nil
 	}
+	// A shared execution backend never bypasses the session owner's policy.
+	if types.ManagedRuntimeEnabled() {
+		owner, ok := types.SandboxTenantIDFromContext(ctx)
+		if !ok {
+			owner = tenantID
+		}
+		if workspaceScriptsDisabled(ctx, policy, owner) {
+			return sandbox.NewDisabledManager(), SandboxPin{}, nil
+		}
+	}
 
 	if pinner != nil && pinner.placer != nil && strings.TrimSpace(sessionID) != "" {
 		// A placed session runs on its assignment's config (C1). Resolving it
@@ -359,6 +369,16 @@ func resolveSandboxForExecution(
 	}
 
 	configID := strings.TrimSpace(agentConfigID)
+	configTenant := tenantID
+	if types.ManagedRuntimeEnabled() {
+		shared, err := managedFileSandbox(ctx, policy)
+		if err != nil {
+			return nil, SandboxPin{}, err
+		}
+		if !shared.IsZero() && (!hasNamedSandboxConfig(configID) || configID == shared.ConfigID) {
+			configID, configTenant = shared.ConfigID, shared.TenantID
+		}
+	}
 	if !hasNamedSandboxConfig(configID) {
 		if workspaceScriptsDisabled(ctx, policy, tenantID) {
 			return sandbox.NewDisabledManager(), SandboxPin{}, nil
@@ -369,9 +389,9 @@ func resolveSandboxForExecution(
 		return sandbox.NewDisabledManager(), SandboxPin{}, nil
 	}
 
-	pin := SandboxPin{ConfigID: configID, TenantID: tenantID}
+	pin := SandboxPin{ConfigID: configID, TenantID: configTenant}
 	mgr, err := resolveTenantSandboxForConfig(
-		ctx, resolver, fallback, tenantID, pin.ConfigID, policy,
+		ctx, resolver, fallback, configTenant, pin.ConfigID, policy,
 	)
 	if err != nil || mgr == nil {
 		return mgr, pin, err

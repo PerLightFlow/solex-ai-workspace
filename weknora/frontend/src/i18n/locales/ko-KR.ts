@@ -4387,6 +4387,7 @@ export default {
     graphDatabaseEngineDescription: '현재 사용 중인 그래프 데이터베이스 엔진',
     unknown: '알 수 없음',
     globalSettings: {
+      fileGenerationDisabled: 'File generation disabled',
       title: '시스템 설정',
       description: '플랫폼 전역 런타임 설정입니다. 저장하면 모든 워크스페이스에 즉시 적용됩니다. 시스템 관리자만 보고 수정할 수 있습니다.',
       loading: '로딩 중...',
@@ -4610,6 +4611,7 @@ export default {
       },
       keyDescriptions: {
         agent: {
+          file_generation_sandbox_id: 'Administrator-managed Docker environment for Python and Excel generation. Create an environment in Sandbox settings first. Users inherit execution with separate session files. Turning this off revokes automatic execution; switching only affects sessions without a sandbox.',
           max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
           collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
         },
@@ -4646,6 +4648,7 @@ export default {
       },
       keyLabels: {
         agent: {
+          file_generation_sandbox_id: 'Default file generation environment',
           max_iterations: 'Execution steps per task',
           collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
         },

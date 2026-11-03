@@ -1,5 +1,6 @@
 """Deployment helpers. No secrets or provider response bodies are logged."""
 import json
+import mimetypes
 import os
 from pathlib import Path
 import shlex
@@ -83,8 +84,9 @@ class Client:
                 raise ValueError('Invalid upload filename')
             boundary = 'WeKnoraNativeAcceptanceBoundary'
             headers['Content-Type'] = 'multipart/form-data; boundary=' + boundary
+            mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
             body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-                    'Content-Type: text/markdown\r\n\r\n').encode() + content + f'\r\n--{boundary}--\r\n'.encode()
+                    f'Content-Type: {mime}\r\n\r\n').encode() + content + f'\r\n--{boundary}--\r\n'.encode()
         req = request.Request(self.base + '/api/v1' + path, data=body, headers=headers, method=method)
         try:
             with self.opener.open(req, timeout=180) as response:

@@ -1,5 +1,6 @@
 /** Server-side validation is authoritative; these bounds give the same feedback before saving. */
 export const AGENT_RUNTIME_SETTING_KEYS = [
+  'agent.file_generation_sandbox_id',
   'agent.max_iterations',
   'agent.collaboration_wait_timeout_seconds',
 ] as const

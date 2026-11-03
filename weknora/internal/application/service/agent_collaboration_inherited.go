@@ -18,9 +18,10 @@ import (
 type (
 	childSourceKey struct{}
 	childSource    struct {
-		Agent           *types.CustomAgent
-		ModelID         string
-		SandboxConfigID string
+		Agent                 *types.CustomAgent
+		ModelID               string
+		SandboxConfigID       string
+		SandboxConfigTenantID uint64
 	}
 )
 
@@ -34,6 +35,7 @@ type inheritedAgentConfig struct {
 	SearchTargets                 types.SearchTargets `json:"search_targets"`
 	WritableKBIDs                 []string            `json:"writable_kb_ids"`
 	SandboxConfigID               string              `json:"sandbox_config_id"`
+	SandboxConfigTenantID         uint64              `json:"sandbox_config_tenant_id,omitempty"`
 	SkillNames                    []string            `json:"skill_names"`
 	OperationsAgentID             string              `json:"operations_agent_id"`
 	AssistantName                 string              `json:"assistant_name"`
@@ -68,6 +70,7 @@ func inheritedChildSnapshot(ctx context.Context, cfg *types.AgentConfig, toolNam
 	}
 	if source.SandboxConfigID != "" {
 		inherited.SandboxConfigID = source.SandboxConfigID
+		inherited.SandboxConfigTenantID = source.SandboxConfigTenantID
 	}
 	for _, skill := range cfg.TenantSkills {
 		if skill != nil {
@@ -120,6 +123,23 @@ func (s *sessionService) restoreInheritedConfig(
 	cfg := snapshot.Config
 	cfg.SearchTargets = snapshot.SearchTargets
 	cfg.SandboxConfigID = snapshot.SandboxConfigID
+	// This owner is part of the server-created delegation snapshot, never a
+	// model argument. Pin the child's OWN workspace to the same backend before
+	// staging attachments; do not share the parent's container or files.
+	if snapshot.SandboxConfigTenantID != 0 && cfg.SandboxConfigID != "" && s.sandboxPinner != nil {
+		owner := snapshot.SandboxConfigTenantID
+		if owner != tenant.ID && (!types.ManagedRuntimeEnabled() || owner != types.ManagedRuntimeTenantID()) {
+			return nil, errors.New("invalid inherited sandbox configuration owner")
+		}
+		sessionID, _ := types.SessionIDFromContext(ctx)
+		if sessionID != "" {
+			_, _, err := resolveSandboxForExecution(types.WithSandboxTenantID(ctx, tenant.ID),
+				s.sandboxResolver, s.sandboxMgr, s.sandboxPinner, owner, sessionID, cfg.SandboxConfigID, s.sandboxPolicy)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	cfg.OperationsAgentID = snapshot.OperationsAgentID
 	cfg.AssistantName = snapshot.AssistantName
 	cfg.AssistantAccess = saved.level(tenant)

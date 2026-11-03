@@ -336,6 +336,7 @@ type TenantSandboxConfigService struct {
 	admission          admission.Registry
 	createDrainTimeout time.Duration
 	userMachines       UserMachineReleaser
+	managedSettings    sandboxSettingReader
 }
 
 // NewTenantSandboxConfigService wires the config service.
@@ -1271,6 +1272,13 @@ func (s *TenantSandboxConfigService) Update(
 	if err := validateNamedSandboxBackend(merged); err != nil {
 		return nil, err
 	}
+	if s.isManagedFileDefault(ctx, tenantID, id) {
+		candidate := *entity
+		candidate.Config, candidate.SandboxType = merged, merged.SandboxType
+		if err := ValidateManagedFileSandbox(&candidate); err != nil {
+			return nil, apperrors.NewBadRequestError(err.Error())
+		}
+	}
 	if skillSnapshotBlocksConnectionChange(entity.Config, merged) ||
 		(skillRetargetWouldChange(entity.Config, merged) && s.configHasInFlightSkill(ctx, tenantID, id)) {
 		return nil, ErrSkillSnapshotBlocksTemplateChange
@@ -1333,6 +1341,9 @@ func (s *TenantSandboxConfigService) Update(
 func (s *TenantSandboxConfigService) Delete(
 	ctx context.Context, tenantID uint64, id string, force bool,
 ) error {
+	if s.isManagedFileDefault(ctx, tenantID, id) {
+		return apperrors.NewBadRequestError("请先在系统设置中关闭或更换默认文件生成环境")
+	}
 	entity, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		return err

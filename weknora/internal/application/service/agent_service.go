@@ -715,8 +715,8 @@ func (s *agentService) validInstallDir(config *types.AgentConfig) (string, bool)
 }
 
 // registerSandboxShellIfAllowed registers shell_exec when this run is
-// entitled to a sandbox shell: SkillsEnabled, or the built-in skill
-// installer. It does not require a ready skill to already exist, so a
+// entitled to a sandbox shell: skills, the built-in installer, or the
+// administrator's managed file environment. No installed skill is required, so a
 // fresh sandbox still has a way to inspect its environment.
 func (s *agentService) registerSandboxShellIfAllowed(
 	ctx context.Context,
@@ -727,7 +727,9 @@ func (s *agentService) registerSandboxShellIfAllowed(
 	if config == nil {
 		return
 	}
-	sandboxMgr, err := s.resolveWorkspaceSandbox(ctx, sessionID, config)
+	tenantID, _ := types.TenantIDFromContext(ctx)
+	sandboxMgr, pin, err := resolveSandboxForExecution(ctx, s.sandboxResolver, s.sandboxMgr,
+		s.sandboxPinner, tenantID, sessionID, config.SandboxConfigID, s.sandboxPolicy, s.resolveOpts(config)...)
 	if err != nil {
 		logger.Warnf(ctx, "Failed to resolve sandbox for shell_exec: %v", err)
 		return
@@ -735,11 +737,10 @@ func (s *agentService) registerSandboxShellIfAllowed(
 	if sandboxMgr == nil {
 		return
 	}
-	// Remote backends keep the skills entitlement: a shell there only exists
-	// to serve skill scripts. The host backend IS the feature, so gating it on
-	// skills would leave Lite with a sandbox nobody can reach.
+	// A centrally managed file environment grants execution independently of
+	// installed skills. Other remote backends retain their skill entitlement.
 	if sandboxMgr.GetType() != sandbox.SandboxTypeHost &&
-		!config.SkillsEnabled && !config.SkillInstallMode() {
+		!config.SkillsEnabled && !config.SkillInstallMode() && !managedFileShellAllowed(ctx, s.sandboxPolicy, pin) {
 		return
 	}
 	s.registerSandboxShellTool(ctx, toolRegistry, sandboxMgr, config)

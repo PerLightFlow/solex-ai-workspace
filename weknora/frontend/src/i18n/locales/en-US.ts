@@ -4776,6 +4776,7 @@ export default {
       networkError: 'Network error, please try again later'
     },
     globalSettings: {
+      fileGenerationDisabled: 'File generation disabled',
       title: 'System Settings',
       description: 'Platform-wide runtime configuration. Saves take effect immediately for every workspace. Visible and editable by system administrators only.',
       loading: 'Loading...',
@@ -5032,6 +5033,7 @@ export default {
       },
       keyLabels: {
         agent: {
+          file_generation_sandbox_id: 'Default file generation environment',
           max_iterations: 'Execution steps per task',
           collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
         },
@@ -5068,6 +5070,7 @@ export default {
       },
       keyDescriptions: {
         agent: {
+          file_generation_sandbox_id: 'Administrator-managed Docker environment for Python and Excel generation. Create an environment in Sandbox settings first. Users inherit execution with separate session files. Turning this off revokes automatic execution; switching only affects sessions without a sandbox.',
           max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
           collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
         },

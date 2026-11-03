@@ -283,8 +283,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		agents interfaces.CustomAgentRepository,
 		skills repository.TenantSkillRepository,
 		files interfaces.StorageBackendResolver,
+		settings interfaces.SystemSettingService,
 	) *service.TenantSandboxConfigService {
-		return service.NewTenantSandboxConfigService(repo, agents, buildGlobalSandboxConfig(), skills, files)
+		return service.NewTenantSandboxConfigService(repo, agents, buildGlobalSandboxConfig(), skills, files).WithManagedRuntimeSettings(settings)
 	}))
 	must(container.Provide(func(s *service.TenantSandboxConfigService) service.WorkspaceSandboxPolicy {
 		return s
