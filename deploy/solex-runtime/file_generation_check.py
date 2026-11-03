@@ -80,7 +80,7 @@ def check_file_generation(admin, ordinary):
                            '保留原始 name，不要编造；将表头加粗。生成后重新用 openpyxl 打开验证，再提供文件。不要委派或询问。',
                    'agent_id': agent_id, 'agent_enabled': True, 'attachment_ids': [upload['id']],
                    'web_search_enabled': False, 'disable_title': True}
-        req = request.Request(ordinary.base + '/api/v1/knowledge-chat/' + session_id,
+        req = request.Request(ordinary.base + '/api/v1/agent-chat/' + session_id,
                               data=json.dumps(payload).encode(), method='POST',
                               headers={'Authorization': 'Bearer ' + ordinary.token,
                                        'Content-Type': 'application/json', 'Accept': 'text/event-stream'})
@@ -107,7 +107,7 @@ def check_file_generation(admin, ordinary):
                     complete = True
                     break
         if not complete or 'shell_exec' not in tools:
-            raise RuntimeError('File generation did not execute a shell and complete')
+            raise RuntimeError(f'File generation did not execute a shell and complete (complete={complete}, tool_calls={len(tools)})')
         artifacts = []
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
