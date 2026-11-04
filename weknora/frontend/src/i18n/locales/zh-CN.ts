@@ -1915,6 +1915,15 @@ export default {
     }
   },
   agentStream: {
+    toolTruncation: {
+      retrying: '输出被截断，正在尝试恢复',
+      recovered: '已恢复写入',
+      failed: '输出被截断，未恢复',
+      hint: '本次工具调用未执行。系统会尝试缩小参数后重试；此前已成功执行的结果会保留。',
+      recoveredHint: '后续已成功写入同一文件；最终文件仍需完成生成和校验。',
+      failedHint: '本轮已结束，未确认这次调用恢复成功。可继续任务，或由管理员检查单次输出额度。',
+      details: '技术详情',
+    },
     saveToKb: {
       emptyContent: '当前回答为空，无法保存到知识库',
       editorOpened: '已打开编辑器，请选择知识库后保存'
@@ -4615,6 +4624,7 @@ export default {
         agent: {
           file_generation_sandbox_id: '由管理员选择 Docker 环境，所有用户直接使用 Python 和 Excel 文件生成功能，各会话文件独立。请先在沙箱配置中新建环境；关闭将撤销自动执行授权，切换仅影响尚未分配沙箱的会话。',
           max_iterations: '单次任务最多执行的推理与工具调用步骤，默认 50 步，可设置 1–200 步。这是执行步骤上限，不是聊天消息条数。',
+          max_completion_tokens: '智能体每次模型请求的输出上限，默认 16384，范围 8192–65536。独立于摘要与任务步数；实际值受模型上限及剩余上下文限制。修改后新任务生效。',
           collaboration_wait_timeout_seconds: '没有新进展时，协作等待请求至少使用此时长，默认 30 秒，可设置 1–60 秒；请求更长时最多等待 60 秒。有新结果或用户输入时可提前结束等待。'
         },
         model: {
@@ -4652,6 +4662,7 @@ export default {
         agent: {
           file_generation_sandbox_id: '默认文件生成环境',
           max_iterations: '单次任务执行步数上限',
+          max_completion_tokens: '单次模型输出上限（token）',
           collaboration_wait_timeout_seconds: '协作无更新等待时长（秒）'
         },
         model: {

@@ -1913,6 +1913,15 @@ export default {
     }
   },
   agentStream: {
+    toolTruncation: {
+      retrying: 'Output truncated; attempting recovery',
+      recovered: 'File writing resumed',
+      failed: 'Output truncated; not recovered',
+      hint: 'This call was not executed. Smaller arguments will be attempted; prior successful results are preserved.',
+      recoveredHint: 'A later write to the same file succeeded. Final generation and validation are still required.',
+      failedHint: 'This turn ended without confirmed recovery of this call. Continue the task or ask an administrator to review its output budget.',
+      details: 'Technical details',
+    },
     saveToKb: {
       emptyContent: '현재 응답이 비어 있어 지식베이스에 저장할 수 없습니다',
       editorOpened: '편집기가 열렸습니다. 지식베이스를 선택한 후 저장하세요'
@@ -4613,6 +4622,7 @@ export default {
         agent: {
           file_generation_sandbox_id: 'Administrator-managed Docker environment for Python and Excel generation. Create an environment in Sandbox settings first. Users inherit execution with separate session files. Turning this off revokes automatic execution; switching only affects sessions without a sandbox.',
           max_iterations: 'Maximum reasoning and tool-call steps in one task. Default: 50; range: 1–200. This limits execution steps, not the number of chat messages.',
+          max_completion_tokens: 'Output budget per agent model call. Default: 16384; range: 8192–65536. Independent of summaries and execution steps, capped by model and remaining context. Applies to new runs.',
           collaboration_wait_timeout_seconds: 'Minimum requested collaboration wait when there is no new progress. Default: 30 seconds; range: 1–60. Longer requests can wait up to 60 seconds. New results or user input can end the wait early.'
         },
         model: {
@@ -4650,6 +4660,7 @@ export default {
         agent: {
           file_generation_sandbox_id: 'Default file generation environment',
           max_iterations: 'Execution steps per task',
+          max_completion_tokens: 'Output tokens per model call',
           collaboration_wait_timeout_seconds: 'Collaboration wait without updates (seconds)'
         },
         model: {

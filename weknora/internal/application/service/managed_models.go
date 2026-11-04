@@ -90,6 +90,11 @@ func (s *sessionService) applyManagedAgentModelDefaults(ctx context.Context, cfg
 		defaults := s.cfg.Conversation.Summary
 		cfg.Temperature = defaults.Temperature
 		cfg.MaxCompletionTokens = defaults.MaxCompletionTokens
+		if cfg.AgentMode == types.AgentModeSmartReasoning {
+			// Agent execution has a separate platform budget, pinned by
+			// buildAgentConfig. Summary limits are only for quick answers.
+			cfg.MaxCompletionTokens = 0
+		}
 		cfg.Thinking = defaults.Thinking
 	}
 	if s.cfg != nil && s.cfg.Agent != nil {

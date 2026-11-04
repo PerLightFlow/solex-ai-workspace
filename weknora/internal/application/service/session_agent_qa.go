@@ -529,6 +529,10 @@ func executionSettingsFromSnapshot(data []byte) (*types.AgentExecutionSettings, 
 // server-side snapshot wins on resumes and delegated turns, so a UI update
 // cannot shorten or expand a task that has already started.
 func (s *sessionService) applyAgentExecutionSettings(ctx context.Context, req *types.QARequest, cfg *types.AgentConfig) error {
+	settings := appruntime.ResolveAgentExecutionSettings(ctx, s.systemSettingService)
+	if types.ManagedRuntimeEnabled() {
+		cfg.MaxCompletionTokens = settings.MaxCompletionTokens
+	}
 	if req.Resume != nil && req.Resume.ExecutionSettings != nil {
 		req.Resume.ExecutionSettings.Apply(cfg)
 		return nil
@@ -539,7 +543,6 @@ func (s *sessionService) applyAgentExecutionSettings(ctx context.Context, req *t
 		saved.ExecutionSettings.Apply(cfg)
 		return nil
 	}
-	settings := appruntime.ResolveAgentExecutionSettings(ctx, s.systemSettingService)
 	if types.ManagedRuntimeEnabled() {
 		cfg.MaxIterations = settings.MaxIterations
 	}

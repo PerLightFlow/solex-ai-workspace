@@ -632,6 +632,7 @@ func (s *agentService) registerSandboxFileTools(
 		return
 	}
 	if store := sessionSandboxFileStore(sandboxMgr); store != nil {
+		config.SandboxFileToolsEnabled = true
 		if _, err := toolRegistry.GetTool(tools.ToolShellExec); err != nil {
 			toolRegistry.RegisterTool(tools.NewListSandboxFilesTool(store))
 		}
@@ -640,7 +641,7 @@ func (s *agentService) registerSandboxFileTools(
 		// bounds one write; the tool advertises a limit derived from it.
 		toolRegistry.RegisterTool(tools.NewWriteSandboxFileTool(
 			store,
-			types.AgentRoundMaxCompletionTokensFor(config.MaxCompletionTokens, config.SandboxConfigID),
+			config.CompletionTokenBudget(),
 		))
 		toolRegistry.RegisterTool(tools.NewEditSandboxFileTool(store))
 		logger.Infof(ctx, "Registered sandbox file primitives (listing is a no-shell fallback)")

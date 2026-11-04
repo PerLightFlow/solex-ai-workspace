@@ -60,7 +60,8 @@ func TestAgentExecutionSettingsRegistryDefaultsValidationAndAudit(t *testing.T) 
 	rows, err := svc.List(ctx)
 	require.NoError(t, err)
 	for key, expected := range map[string]string{
-		appruntime.AgentMaxIterationsKey: "50", appruntime.AgentCollaborationWaitTimeoutSecondsKey: "30",
+		appruntime.AgentMaxCompletionTokensKey: "16384",
+		appruntime.AgentMaxIterationsKey:       "50", appruntime.AgentCollaborationWaitTimeoutSecondsKey: "30",
 	} {
 		found := false
 		for _, row := range rows {
@@ -127,6 +128,11 @@ func TestManagedExecutionSettingsApplyToAllUsersAndOnlyNewRuns(t *testing.T) {
 	require.Equal(t, 90, next.MaxIterations)
 	require.Equal(t, 45, next.CollaborationWaitTimeoutSeconds)
 	require.Equal(t, 50, started.MaxIterations)
+	_, err = settings.Update(ctx, appruntime.AgentMaxCompletionTokensKey, 32768)
+	require.NoError(t, err)
+	require.NoError(t, svc.applyAgentExecutionSettings(ctx, &types.QARequest{}, next))
+	require.Equal(t, 32768, next.MaxCompletionTokens)
+	require.Equal(t, 16384, started.MaxCompletionTokens)
 	var restoredRequest types.ResumableAgentRequest
 	require.NoError(t, json.Unmarshal(blob, &restoredRequest))
 	snapshot, err := json.Marshal(agent.RunSnapshot{Version: agent.RunSnapshotVersion, Request: blob})
@@ -147,6 +153,27 @@ func TestManagedExecutionSettingsApplyToAllUsersAndOnlyNewRuns(t *testing.T) {
 	child := &types.AgentConfig{}
 	require.NoError(t, svc.applyAgentExecutionSettings(collaboration.WithBinding(ctx, b), &types.QARequest{}, child))
 	require.Equal(t, *started, *child)
+}
+
+// Ordinary users inherit a public sandbox without a private SandboxConfigID.
+// The summarizer's small budget must not cap their generated tool arguments.
+func TestManagedAgentCompletionBudgetIsIndependentOfSummary(t *testing.T) {
+	ctx := managedMemberContext(t)
+	settings, _, _ := newExecutionSettingsTestService()
+	svc := &sessionService{systemSettingService: settings,
+		cfg:                   &config.Config{Conversation: &config.ConversationConfig{Summary: &config.SummaryConfig{MaxCompletionTokens: 1024}}},
+		webSearchProviderRepo: &sharedAgentWebSearchRepo{}}
+	for _, admin := range []bool{false, true} {
+		actor := context.WithValue(ctx, types.SystemAdminContextKey, admin)
+		req := &types.QARequest{Session: &types.Session{ID: "session", TenantID: 22},
+			CustomAgent: &types.CustomAgent{TenantID: 22, Config: types.CustomAgentConfig{
+				AgentMode: types.AgentModeSmartReasoning, MaxCompletionTokens: 1024, SkillsSelectionMode: "none",
+			}}}
+		cfg, err := svc.buildAgentConfig(actor, req, &types.Tenant{ID: 22}, 22)
+		require.NoError(t, err)
+		require.Equal(t, 16384, cfg.MaxCompletionTokens, "file generation must not inherit the summary's 1024-token cap, admin=%v", admin)
+		require.Empty(t, cfg.SandboxConfigID, "budget resolution must not invent a private sandbox binding")
+	}
 }
 
 func TestWorkspaceManagedAgentKeepsItsOwnIterationBudget(t *testing.T) {
@@ -177,4 +204,25 @@ func TestManagedExecutionSettingsMaximumPassesEngineValidation(t *testing.T) {
 		require.Equal(t, iterations, cfg.MaxIterations)
 	}
 	require.Error(t, (&agentService{}).ValidateConfig(&types.AgentConfig{MaxIterations: 201}))
+}
+
+func TestCompletionSettingRejectsInvalidValuesAndLegacySnapshotUsesCurrentBudget(t *testing.T) {
+	ctx := managedMemberContext(t)
+	settings, repo, _ := newExecutionSettingsTestService()
+	for _, value := range []any{0, 1024, 8191, 65537, 8192.5, "16384", nil} {
+		_, err := settings.Update(ctx, appruntime.AgentMaxCompletionTokensKey, value)
+		require.Error(t, err)
+	}
+	require.Zero(t, repo.writeCount)
+	for _, value := range []int{8192, 65536, 24576} {
+		_, err := settings.Update(ctx, appruntime.AgentMaxCompletionTokensKey, value)
+		require.NoError(t, err)
+	}
+	svc := &sessionService{systemSettingService: settings}
+	cfg := &types.AgentConfig{MaxCompletionTokens: 1024}
+	require.NoError(t, svc.applyAgentExecutionSettings(ctx, &types.QARequest{Resume: &types.AgentResume{
+		ExecutionSettings: &types.AgentExecutionSettings{MaxIterations: 20, CollaborationWaitTimeoutSeconds: 10},
+	}}, cfg))
+	require.Equal(t, 24576, cfg.MaxCompletionTokens)
+	require.Equal(t, 20, cfg.MaxIterations)
 }

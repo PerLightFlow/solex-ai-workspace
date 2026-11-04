@@ -296,6 +296,9 @@ func (e *AgentEngine) streamThinkingToEventBus(
 	runtimeNotices ...string,
 ) (*types.ChatResponse, error) {
 	runtimeNotice := strings.Join(runtimeNotices, "\n")
+	if recovery := e.fileWriteRetryNotice(); recovery != "" {
+		runtimeNotice += "\n" + recovery
+	}
 	budgetMessages := messages
 	if runtimeNotice != "" {
 		budgetMessages = append(

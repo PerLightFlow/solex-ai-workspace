@@ -97,3 +97,20 @@ test('administrator can select and disable file generation without numeric coerc
     assert.equal(h.context.settings.value[0].value, value)
   }
 })
+
+
+test('output budget validates limits and persists the administrator value', async () => {
+ const key = 'agent.max_completion_tokens'
+ for (const value of [8192, 16384, 65536]) {
+  assert.equal(isValidAgentRuntimeSettingValue(key, value), true)
+  const h = harness(key, 16384, value)
+  await h.save()
+  assert.deepEqual(h.writes, [{ key, value }])
+ }
+ for (const value of [1024, 8191, 65537, 8192.5, '16384', null]) {
+  const h = harness(key, 16384, value)
+  await h.save()
+  assert.equal(h.writes.length, 0)
+  assert.equal(h.context.editValues[key], 16384)
+ }
+})

@@ -8,6 +8,10 @@ import (
 
 const (
 	AgentMaxIterationsKey                   = "agent.max_iterations"
+	AgentMaxCompletionTokensKey             = "agent.max_completion_tokens"
+	DefaultAgentMaxCompletionTokens         = 16384
+	MinAgentMaxCompletionTokens             = 8192
+	MaxAgentMaxCompletionTokens             = 65536
 	AgentCollaborationWaitTimeoutSecondsKey = "agent.collaboration_wait_timeout_seconds"
 	DefaultAgentMaxIterations               = 50
 	MaxAgentMaxIterations                   = 200
@@ -25,7 +29,13 @@ type IntegerSettingReader interface {
 // defend against legacy/out-of-band database writes as well as malformed API
 // input (the management service separately rejects invalid values on save).
 func ResolveAgentExecutionSettings(ctx context.Context, reader IntegerSettingReader) types.AgentExecutionSettings {
+	completion := boundedSettingInt(ctx, reader, AgentMaxCompletionTokensKey,
+		DefaultAgentMaxCompletionTokens, MaxAgentMaxCompletionTokens)
+	if completion < MinAgentMaxCompletionTokens {
+		completion = DefaultAgentMaxCompletionTokens
+	}
 	return types.AgentExecutionSettings{
+		MaxCompletionTokens: completion,
 		MaxIterations: boundedSettingInt(ctx, reader, AgentMaxIterationsKey,
 			DefaultAgentMaxIterations, MaxAgentMaxIterations),
 		CollaborationWaitTimeoutSeconds: boundedSettingInt(ctx, reader, AgentCollaborationWaitTimeoutSecondsKey,

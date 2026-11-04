@@ -285,7 +285,7 @@ func (e *AgentEngine) failTruncatedToolCalls(
 			Name:             tc.Function.Name,
 			Args:             map[string]any{"_raw": tc.Function.Arguments},
 			ProviderMetadata: tc.ProviderMetadata,
-			Result:           &types.ToolResult{Success: false, Error: truncatedArgumentsError},
+			Result:           e.truncatedToolResult(tc),
 		}
 		step.ToolCalls = append(step.ToolCalls, toolCall)
 		e.emitToolOutcome(ctx, toolCall, iteration, sessionID)
@@ -495,7 +495,7 @@ func (e *AgentEngine) runToolCallAnswered(
 				Name:             tc.Function.Name,
 				Args:             map[string]any{"_raw": argsStr},
 				ProviderMetadata: tc.ProviderMetadata,
-				Result:           &types.ToolResult{Success: false, Error: truncatedArgumentsError},
+				Result:           e.truncatedToolResult(tc),
 			}
 		}
 		logger.Warnf(ctx, "%s Repaired malformed JSON arguments", toolTag)

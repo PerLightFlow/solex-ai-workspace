@@ -102,6 +102,10 @@ type settingSpec struct {
 // the new value, no in-memory state bound at init time we cannot
 // re-derive)".
 var registry = map[string]settingSpec{
+	appruntime.AgentMaxCompletionTokensKey: {
+		Type: "int", Default: int64(appruntime.DefaultAgentMaxCompletionTokens), Category: "agent",
+		Description: "智能体单次模型请求的输出 token 上限（8192–65536，默认 16384）。独立于文档摘要和任务步数；管理员与普通用户统一继承，实际值受模型和剩余上下文限制。新任务生效，子任务及恢复任务保留启动时的值。",
+	},
 	ManagedFileSandboxKey: {
 		Type: "string", Default: "", Category: "agent",
 		Description: "统一文件生成使用的 Docker 沙箱。关闭时不再授予统一脚本执行能力；选择后所有用户自动继承，文件按会话隔离。已有会话保留原沙箱，新会话使用新选择。",
@@ -1394,6 +1398,14 @@ func encodeForType(declared string, rawValue any) (types.JSON, error) {
 //     400 body verbatim).
 func validateRegistryEntry(key string, rawValue any) error {
 	switch key {
+	case appruntime.AgentMaxCompletionTokensKey:
+		n, err := coerceToPositiveInt64(rawValue)
+		if err != nil {
+			return err
+		}
+		if n < appruntime.MinAgentMaxCompletionTokens || n > appruntime.MaxAgentMaxCompletionTokens {
+			return fmt.Errorf("value must be an integer between %d and %d", appruntime.MinAgentMaxCompletionTokens, appruntime.MaxAgentMaxCompletionTokens)
+		}
 	case ManagedFileSandboxKey:
 		id, ok := rawValue.(string)
 		if !ok {

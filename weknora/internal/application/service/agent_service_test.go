@@ -42,6 +42,7 @@ type fakeAgentKnowledgeService struct {
 }
 
 type fakeAgentChatModel struct {
+	lastCompletionBudget int
 	lastToolNames        []string
 	lastToolDescriptions map[string]string
 	lastSystemPrompt     string
@@ -64,6 +65,7 @@ func (m *fakeAgentChatModel) ChatStream(
 		}
 	}
 	if opts != nil {
+		m.lastCompletionBudget = opts.MaxCompletionTokens
 		for _, tool := range opts.Tools {
 			m.lastToolNames = append(m.lastToolNames, tool.Function.Name)
 			m.lastToolDescriptions[tool.Function.Name] = tool.Function.Description

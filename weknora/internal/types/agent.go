@@ -82,14 +82,32 @@ const MinSandboxWriteCompletionTokens = 8192
 // the agent's sandbox: unset + sandbox uses the large write-file budget, and a
 // configured value too small to hold a file write is raised to the floor.
 func AgentRoundMaxCompletionTokensFor(configured int, sandboxConfigID string) int {
+	return agentRoundCompletionBudget(configured, NeedsSandboxWriteCompletionBudget(sandboxConfigID))
+}
+
+func agentRoundCompletionBudget(configured int, fileTools bool) int {
 	if configured > 0 {
-		if NeedsSandboxWriteCompletionBudget(sandboxConfigID) &&
+		if fileTools &&
 			configured < MinSandboxWriteCompletionTokens {
 			return MinSandboxWriteCompletionTokens
 		}
 		return configured
 	}
-	return DefaultMaxCompletionTokens(AgentModeSmartReasoning, sandboxConfigID)
+	return DefaultSmartReasoningMaxCompletionTokens
+}
+
+// CompletionTokenBudget follows registered capabilities, including inherited
+// file tools, without changing the sandbox's owner or private configuration.
+func (c *AgentConfig) CompletionTokenBudget() int {
+	if c == nil {
+		return DefaultSmartReasoningMaxCompletionTokens
+	}
+	budget := agentRoundCompletionBudget(c.MaxCompletionTokens,
+		c.SandboxFileToolsEnabled || NeedsSandboxWriteCompletionBudget(c.SandboxConfigID))
+	if c.ModelMaxOutputTokens > 0 {
+		budget = min(budget, c.ModelMaxOutputTokens)
+	}
+	return budget
 }
 
 // UnlimitedMaxIterations is the stored MaxIterations value meaning the ReAct
@@ -202,6 +220,8 @@ type AgentConfig struct {
 	// DefaultMaxCompletionTokens for this agent's mode and sandbox.
 	// Explicit values are sent as-is.
 	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
+	// Derived from actual tool registration; never accepted from a request.
+	SandboxFileToolsEnabled bool `json:"-"`
 	// ModelMaxOutputTokens is the resolved model's per-response output limit,
 	// or zero when unknown. It caps the round budget and is resolved per run.
 	ModelMaxOutputTokens int `json:"-"`

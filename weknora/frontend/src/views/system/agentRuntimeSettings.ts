@@ -2,10 +2,12 @@
 export const AGENT_RUNTIME_SETTING_KEYS = [
   'agent.file_generation_sandbox_id',
   'agent.max_iterations',
+  'agent.max_completion_tokens',
   'agent.collaboration_wait_timeout_seconds',
 ] as const
 
 const INTEGER_BOUNDS: Record<string, { min: number; max: number }> = {
+  'agent.max_completion_tokens': { min: 8192, max: 65536 },
   'agent.max_iterations': { min: 1, max: 200 },
   'agent.collaboration_wait_timeout_seconds': { min: 1, max: 60 },
 }

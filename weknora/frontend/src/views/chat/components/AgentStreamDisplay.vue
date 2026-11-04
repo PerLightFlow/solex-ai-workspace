@@ -269,7 +269,8 @@
 
                     <div v-if="isEventExpanded(event.tool_call_id) && !event.pending && hasExpandableResults(event)"
                     class="action-details">
-                    <BrowserToolDetails v-if="event.tool_name === 'local_browser'" :event="event" />
+                    <ToolTruncationNotice v-if="truncationStatus(event)" :status="truncationStatus(event)!" :details="event.error || event.output" />
+                    <BrowserToolDetails v-else-if="event.tool_name === 'local_browser'" :event="event" />
                     <div v-else-if="resolveToolDisplayType(event)" class="tool-result-wrapper">
                       <ToolResultRenderer :display-type="resolveToolDisplayType(event)" :tool-data="event.tool_data"
                         :output="toolResultOutput(event)" :arguments="event.arguments" :success="event.success" />
@@ -670,7 +671,8 @@
 
                 <div v-if="isEventExpanded(event.tool_call_id) && !event.pending && hasExpandableResults(event)"
                   class="action-details">
-                  <BrowserToolDetails v-if="event.tool_name === 'local_browser'" :event="event" />
+                  <ToolTruncationNotice v-if="truncationStatus(event)" :status="truncationStatus(event)!" :details="event.error || event.output" />
+                    <BrowserToolDetails v-else-if="event.tool_name === 'local_browser'" :event="event" />
                     <div v-else-if="resolveToolDisplayType(event)" class="tool-result-wrapper">
                     <ToolResultRenderer :display-type="resolveToolDisplayType(event)" :tool-data="event.tool_data"
                       :output="toolResultOutput(event)" :arguments="event.arguments" :success="event.success" />
@@ -826,6 +828,8 @@ import {
 import type { ProtectedFileAccessContext } from '@/utils/protectedFileAccess';
 import { unwrapFinalAnswerWrappers, thinkingEqualsAnswer } from '@/utils/finalAnswer';
 import { getAgentToolIconName } from '@/utils/agent-tool-icons';
+import ToolTruncationNotice from './ToolTruncationNotice.vue';
+import { toolTruncationStatus } from '@/utils/toolTruncation';
 import { getMcpToolDisplayType, getMcpToolTitle, mcpToolResultOutput } from '@/utils/mcpToolDisplay';
 import { getCatalogToolDisplayType, getCatalogToolTitle } from '@/utils/catalogToolDisplay';
 import { getQueryText, getWikiPageText } from '@/utils/agent-tool-display';
@@ -3185,7 +3189,11 @@ const getSandboxToolDetail = (event: any): string => {
 };
 
 // Get tool title - prefer summary over description, add query for search tools
+const truncationStatus = (event: any) => toolTruncationStatus(event, eventStream.value, isSegmentDone.value);
+
 const getToolTitle = (event: any): string => {
+  const recovery = truncationStatus(event);
+  if (recovery) return `${getLocalizedToolName(event.tool_name)} · ${t('agentStream.toolTruncation.' + recovery)}`;
   if (event.tool_name === 'local_browser') return browserToolTitle(t, event);
   const mcpTitle = getMcpToolTitle(t, event)
   if (mcpTitle) return mcpTitle

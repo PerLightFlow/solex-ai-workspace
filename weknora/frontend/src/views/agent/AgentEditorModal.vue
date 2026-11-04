@@ -600,7 +600,7 @@
           </div>
 
           <!-- 最大生成Token数：0 表示跟随系统默认；自定义后按输入值保存 -->
-          <div class="setting-row">
+          <div v-if="!usesGlobalAgentBudget || !isAgentMode" class="setting-row">
             <div class="setting-info">
               <label>{{ $t('agent.editor.maxCompletionTokens') }}</label>
               <p class="desc">{{ isAgentMode ? $t('agentEditor.desc.maxTokensAgent') :

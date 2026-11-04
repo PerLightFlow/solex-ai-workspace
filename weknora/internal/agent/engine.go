@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/collaboration"
@@ -103,6 +104,9 @@ type AgentEngine struct {
 	progress turnProgress
 	// Hold speculative parent prose until delegated work has been reviewed.
 	holdCollaborationAnswer bool
+	// Tool argument repair can run in parallel; all writes share a conservative
+	// chunk hint for the remainder of this run after an output cutoff.
+	fileWriteChunkLimit atomic.Int64
 }
 
 // maxSteerOverruns caps loop-end injects past MaxIterations. One extra round

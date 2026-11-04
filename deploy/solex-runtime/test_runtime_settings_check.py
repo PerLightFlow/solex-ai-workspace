@@ -11,6 +11,7 @@ from runtime_settings_check import check_runtime_settings
 class RuntimeSettingsAcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.values = {'agent.max_iterations': 50,
+                       'agent.max_completion_tokens': 16384,
                        'agent.collaboration_wait_timeout_seconds': 30}
         self.allow_invalid = False
         self.allow_ordinary = False
@@ -31,8 +32,9 @@ class RuntimeSettingsAcceptanceTests(unittest.TestCase):
                            for key, value in self.values.items()]
             elif method == 'PUT':
                 value = json.loads(req.data)['value']
-                maximum = 200 if key == 'agent.max_iterations' else 60
-                if not self.allow_invalid and (type(value) is not int or not 1 <= value <= maximum):
+                minimum, maximum = {'agent.max_iterations': (1, 200), 'agent.max_completion_tokens': (8192, 65536),
+                                    'agent.collaboration_wait_timeout_seconds': (1, 60)}[key]
+                if not self.allow_invalid and (type(value) is not int or not minimum <= value <= maximum):
                     raise HTTPError(req.full_url, 400, '', {}, None)
                 self.values[key] = value
                 self.writes.append((key, value))
@@ -49,6 +51,7 @@ class RuntimeSettingsAcceptanceTests(unittest.TestCase):
         self.assertTrue(result['passed'])
         self.assertEqual(result['values'], self.values)
         self.assertEqual(self.writes, [('agent.max_iterations', 50),
+                                       ('agent.max_completion_tokens', 16384),
                                        ('agent.collaboration_wait_timeout_seconds', 30)])
 
     def test_invalid_write_acceptance_fails_and_restores_value(self):

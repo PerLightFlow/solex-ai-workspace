@@ -213,27 +213,14 @@ const contextSafetyTokens = 4096
 
 // getCompletionTokenBudget is the single completion budget for each ReAct LLM
 // round. The chat layer maps it to max_tokens or max_completion_tokens per
-// provider. Unset without a sandbox is 4096; unset with a sandbox
-// (write_sandbox_file / edit_sandbox_file) is 24576.
+// provider. Unset is 24576; registered file tools also receive a minimum
+// usable budget. Managed runs pin their separate platform setting.
 func (e *AgentEngine) getCompletionTokenBudget() int {
 	return completionTokenBudgetFor(e.config)
 }
 
 func completionTokenBudgetFor(cfg *types.AgentConfig) int {
-	configured := 0
-	sandboxID := ""
-	modelLimit := 0
-	if cfg != nil {
-		configured = cfg.MaxCompletionTokens
-		sandboxID = cfg.SandboxConfigID
-		modelLimit = cfg.ModelMaxOutputTokens
-	}
-	budget := types.AgentRoundMaxCompletionTokensFor(configured, sandboxID)
-	// Providers reject a request for more output than the model can emit.
-	if modelLimit > 0 {
-		budget = min(budget, modelLimit)
-	}
-	return budget
+	return cfg.CompletionTokenBudget()
 }
 
 // contextReserveTokens is the part of the window that history may not occupy,

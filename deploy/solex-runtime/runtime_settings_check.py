@@ -5,6 +5,7 @@ from api_client import ApiError
 def check_runtime_settings(admin, ordinary):
     base = '/system/admin/settings'
     bounds = {'agent.max_iterations': (1, 200),
+              'agent.max_completion_tokens': (8192, 65536),
               'agent.collaboration_wait_timeout_seconds': (1, 60)}
     rows = {row['key']: row for row in admin.call('GET', base)}
     values = {}
@@ -19,7 +20,7 @@ def check_runtime_settings(admin, ordinary):
         # Re-save the effective value. Never temporarily lower a production
         # budget while unrelated users may be starting their own requests.
         admin.call('PUT', path, {'value': value})
-        for invalid in (0, maximum + 1, 1.5):
+        for invalid in (minimum - 1, maximum + 1, 1.5):
             try:
                 admin.call('PUT', path, {'value': invalid})
             except ApiError as exc:

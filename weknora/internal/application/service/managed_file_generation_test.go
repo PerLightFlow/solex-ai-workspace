@@ -57,13 +57,16 @@ func TestManagedFileGenerationOffersExecutableToolsWithSkillsOff(t *testing.T) {
 		sandboxResolver: &lendingResolver{mgr: &capableManager{typ: sandbox.SandboxTypeDocker,
 			shell: &stubShellExecutor{}, files: stubSessionFileStore{}}},
 	}
-	engine, err := svc.CreateAgentEngine(ctx, &types.AgentConfig{SkillsEnabled: false}, model, nil, nil, "s-1", "m-1")
+	cfg := &types.AgentConfig{SkillsEnabled: false, MaxCompletionTokens: 1024}
+	engine, err := svc.CreateAgentEngine(ctx, cfg, model, nil, nil, "s-1", "m-1")
 	require.NoError(t, err)
 	_, err = engine.Execute(ctx, "s-1", "m-1", "Create a workbook", nil)
 	require.NoError(t, err)
 	require.True(t, toolOffered(model.lastToolNames, tools.ToolShellExec))
 	require.True(t, toolOffered(model.lastToolNames, tools.ToolReadFile))
 	require.True(t, toolOffered(model.lastToolNames, tools.ToolWriteSandboxFile))
+	require.Equal(t, 8192, model.lastCompletionBudget, "inherited files get the minimum file budget even without a private config ID")
+	require.Empty(t, cfg.SandboxConfigID)
 	require.False(t, toolOffered(model.lastToolNames, tools.LegacyToolReadSkill))
 }
 

@@ -20,6 +20,15 @@ func TestAgentExecutionSettingsBoundInvalidStoredValues(t *testing.T) {
 	ctx := context.Background()
 	defaults := ResolveAgentExecutionSettings(ctx, nil)
 	require.Equal(t, 50, defaults.MaxIterations)
+	require.Equal(t, 16384, defaults.MaxCompletionTokens)
+	for _, value := range []int64{-1, 0, 1024, 8191, 65537, 1 << 62} {
+		got := ResolveAgentExecutionSettings(ctx, executionSettingValues{AgentMaxCompletionTokensKey: value})
+		require.Equal(t, 16384, got.MaxCompletionTokens)
+	}
+	for _, value := range []int64{8192, 24576, 65536} {
+		got := ResolveAgentExecutionSettings(ctx, executionSettingValues{AgentMaxCompletionTokensKey: value})
+		require.EqualValues(t, value, got.MaxCompletionTokens)
+	}
 	require.Equal(t, 30, defaults.CollaborationWaitTimeoutSeconds)
 	for _, value := range []int64{-1, 0, 201, 1 << 62} {
 		settings := ResolveAgentExecutionSettings(ctx, executionSettingValues{AgentMaxIterationsKey: value})

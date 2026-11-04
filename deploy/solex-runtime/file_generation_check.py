@@ -77,7 +77,10 @@ def check_file_generation(admin, ordinary):
         upload = ordinary.call('POST', '/sessions/' + session_id + '/attachments', upload=('input.csv', fixture))['data']
         payload = {'query': '请读取附件 input.csv，实际调用 Python openpyxl 生成 /workspace/output/acceptance.xlsx。'
                            '工作表第一行是原始表头，之后保留两条原始记录，最后增加 total 行，quantity 为数量总和（写入数字值）。'
-                           '保留原始 name，不要编造；将表头加粗。生成后重新用 openpyxl 打开验证，再提供文件。不要委派或询问。',
+                           '保留原始 name，不要编造；将表头加粗。另建 TestCases 工作表，编写24条合成的表格导入测试用例，'
+                           '编号 CASE-01 到 CASE-24，每条包含操作步骤和预期结果；每条操作步骤至少60个中文字，场景各不相同。'
+                           '这些是合成验收数据，不是实际产品需求。用 write_sandbox_file 将具体用例数据写入文件（可分块追加），'
+                           '再用短 Python 脚本生成表格；不要用循环复制同一段步骤。生成后重新用 openpyxl 打开验证，再提供文件。不要委派或询问。',
                    'agent_id': agent_id, 'agent_enabled': True, 'attachment_ids': [upload['id']],
                    'web_search_enabled': False, 'disable_title': True}
         req = request.Request(ordinary.base + '/api/v1/agent-chat/' + session_id,
@@ -85,7 +88,9 @@ def check_file_generation(admin, ordinary):
                               headers={'Authorization': 'Bearer ' + ordinary.token,
                                        'Content-Type': 'application/json', 'Accept': 'text/event-stream'})
         tools = []
-        deadline = time.monotonic() + 240
+        truncations = 0
+        max_write_size = 0
+        deadline = time.monotonic() + 360
         with ordinary.opener.open(req, timeout=90) as stream:
             for raw in stream:
                 if time.monotonic() > deadline:
@@ -101,6 +106,11 @@ def check_file_generation(admin, ordinary):
                     raise RuntimeError('File generation stream reported an error; contents omitted')
                 if kind == 'tool_call':
                     tools.append(data.get('tool_name'))
+                if kind == 'tool_result':
+                    if data.get('error_code') == 'tool_arguments_truncated' or 'model output was cut off' in data.get('error', ''):
+                        truncations += 1
+                    if data.get('tool_name') == 'write_sandbox_file' and data.get('success'):
+                        max_write_size = max(max_write_size, data.get('size', 0))
                 if kind in ('agent_prompt_required', 'tool_approval_required'):
                     raise RuntimeError('Synthetic file generation unexpectedly requires manual input')
                 if kind == 'complete':
@@ -122,6 +132,13 @@ def check_file_generation(admin, ordinary):
         values = workbook_values(content)
         if not {marker, '17', '25', '42'}.issubset(values):
             raise RuntimeError('Workbook does not contain the actual attachment values and total')
+        expected_cases = {f'CASE-{i:02d}' for i in range(1, 25)}
+        if not expected_cases.issubset(values) or len({v for v in values if len(v) >= 60}) < 24:
+            raise RuntimeError('Long-form workbook is missing distinct detailed test cases')
+        if 'write_sandbox_file' not in tools or max_write_size < 4096:
+            raise RuntimeError('Long-form file writing was not exercised')
+        if truncations:
+            raise RuntimeError('The synthetic long-form task still hit the output cap')
         # An unrelated workspace, including its administrator, cannot download
         # a user's private session file through the artifact endpoint.
         try:
@@ -133,6 +150,7 @@ def check_file_generation(admin, ordinary):
         return {'passed': True, 'skills_disabled': True, 'model_unspecified': True,
                 'attachment_values_verified': True, 'xlsx_download_bytes': len(content),
                 'python_execution': True, 'cross_workspace_download_denied': True,
+                'detailed_case_count': 24, 'max_write_size': max_write_size, 'truncated_calls': truncations,
                 'ordinary_configuration_denied': True, 'tool_calls': len(tools)}
     finally:
         if session_id:
