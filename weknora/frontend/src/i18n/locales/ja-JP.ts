@@ -7146,10 +7146,10 @@ export default {
     toolTruncation: {
       retrying: 'Output truncated; attempting recovery',
       recovered: 'File writing resumed',
-      failed: 'Output truncated; not recovered',
+      failed: 'Output truncated; recovery unconfirmed',
       hint: 'This call was not executed. Smaller arguments will be attempted; prior successful results are preserved.',
       recoveredHint: 'A later write to the same file succeeded. Final generation and validation are still required.',
-      failedHint: 'This turn ended without confirmed recovery of this call. Continue the task or ask an administrator to review its output budget.',
+      failedHint: 'This call was not executed and its recovery could not be confirmed from the record; older records may lack the target path. Check later steps and the final artifact. This does not mean the entire task failed.',
       details: 'Technical details',
     },
     askUser: {
