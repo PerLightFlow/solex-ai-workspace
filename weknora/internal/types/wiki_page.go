@@ -414,6 +414,8 @@ type WikiPageRevertRequest struct {
 	Slug string `json:"slug" binding:"required" extensions:"x-agent"`
 	// Revision to restore. Versions start at 1.
 	Version int `json:"version" binding:"required" minimum:"1" extensions:"x-agent"`
+	// Current version observed before restoring; required in account-space mode.
+	ExpectedVersion int `json:"expected_version,omitempty" extensions:"x-agent"`
 }
 
 // WikiFolderRootID is the sentinel parent/folder id meaning "the wiki root"

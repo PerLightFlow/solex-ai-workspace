@@ -23,6 +23,8 @@ import { openMermaidFullscreen } from '@/utils/mermaidViewer';
 import { diffWikiLines, type WikiDiffLine } from '@/utils/wikiLineDiff';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities';
+import { useSpacePermission } from '@/composables/useSpacePermission';
 import { useAssistantStore } from '@/stores/assistant';
 import AssistantActionsButton from '@/components/assistant/AssistantActionsButton.vue';
 import DocumentPreview from '@/components/document-preview.vue';
@@ -36,6 +38,7 @@ import { isKnownPreviewableExt, resolveFilePreviewExt } from '@/utils/filePrevie
 
 const { t } = useI18n();
 const authStore = useAuthStore();
+const deployment = useDeploymentCapabilitiesStore();
 
 // canDeleteGeneratedQuestion 对应后端 DELETE /chunks/by-id/:id/questions
 // 的 OwnedChunkKBOrAdminFromChunkID 守卫——KB 创建者或空间 Admin+
@@ -43,6 +46,7 @@ const authStore = useAuthStore();
 // 传下来（包含 KB creator / Admin / 组织分享 editor 三种来源），未
 // 传时按更严格的 Admin 兜底，避免 Viewer 看到一个会 403 的入口。
 const canDeleteGeneratedQuestion = computed(() => {
+  if (deployment.userSpaces) return spacePermission.value?.edit === true;
   if (props.canEditKB === true) return true;
   return authStore.hasRole('admin');
 });
@@ -253,6 +257,8 @@ mermaid.initialize({
   }
 });
 const props = defineProps(["visible", "details", "knowledgeType", "sourceInfo", "canEditKB", "canDownloadKB", "parse_status", "kbId"]);
+const spacePermission = useSpacePermission(computed(() => props.kbId || props.details?.knowledge_base_id || ''));
+const canReadOriginal = computed(() => !deployment.userSpaces || spacePermission.value?.download === true);
 const emit = defineEmits(["closeDoc", "getDoc", "questionDeleted", "summaryStateChange", "attributionChange"]);
 const activityPanel = ref<InstanceType<typeof KnowledgeActivityPanel> | null>(null);
 let attributionRefreshGeneration = 0;
@@ -778,6 +784,7 @@ const processedChunks = computed(() => {
 });
 
 const canPreview = (): boolean => {
+  if (!canReadOriginal.value) return false;
   if (props.details?.type !== 'file') return false;
   const ft = resolveFilePreviewExt(props.details?.title, props.details?.file_type);
   if (!ft) return false;
@@ -786,14 +793,14 @@ const canPreview = (): boolean => {
 };
 
 // 当文档详情加载完成时，file 类型自动切换到「预览」；音频类型使用 merged + 播放器
-watch(() => props.details?.id, (newId) => {
+watch([() => props.details?.id, canReadOriginal], ([newId]) => {
   // 清理旧音频
   if (audioBlobUrl.value) {
     URL.revokeObjectURL(audioBlobUrl.value);
     audioBlobUrl.value = '';
   }
   if (!newId) return;
-  if (isAudioFile(props.details?.file_type)) {
+  if (isAudioFile(props.details?.file_type) && canReadOriginal.value) {
     viewMode.value = 'merged'; // 音频默认全文视图，播放器已内嵌
     loadAudioPreview();
   } else if (props.details?.type === 'file' && canPreview()) {
@@ -824,7 +831,7 @@ const audioBlobUrl = ref('');
 const audioLoading = ref(false);
 
 const loadAudioPreview = async () => {
-  if (!props.details?.id || audioBlobUrl.value) return;
+  if (!props.details?.id || audioBlobUrl.value || !canReadOriginal.value) return;
   audioLoading.value = true;
   try {
     const blob = await previewKnowledgeFile(props.details.id);
@@ -1887,7 +1894,7 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
           </div>
 
           <!-- 音频播放器（音频文件时固定显示在内容区顶部） -->
-          <div v-if="isAudioFile(details.file_type)" class="audio-player-section">
+          <div v-if="isAudioFile(details.file_type) && canReadOriginal" class="audio-player-section">
             <div v-if="audioLoading" class="audio-loading">
               <t-loading size="small" />
               <span>{{ $t('preview.audioLoading') }}</span>

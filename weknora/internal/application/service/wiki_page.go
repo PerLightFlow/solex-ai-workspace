@@ -428,6 +428,9 @@ func (s *wikiPageService) RevertPageToVersion(
 	if version == page.Version {
 		return nil, ErrWikiRevertToCurrentVersion
 	}
+	if expected := types.ExpectedContentVersion(ctx); expected != "" && expected != strconv.Itoa(page.Version) {
+		return nil, repository.ErrWikiPageConflict
+	}
 	rev, err := s.repo.GetRevision(ctx, kbID, page.ID, version)
 	if err != nil {
 		return nil, err

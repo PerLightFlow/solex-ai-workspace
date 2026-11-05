@@ -49,8 +49,6 @@ func NewWikiPageHandler(
 func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error) {
 	ctx := c.Request.Context()
 	kbID := secutils.SanitizeForLog(c.Param("kb_id"))
-	tenantID := c.GetUint64(types.TenantIDContextKey.String())
-
 	if kbID == "" {
 		return "", 0, errors.NewBadRequestError("Knowledge base ID is required")
 	}
@@ -65,7 +63,7 @@ func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error)
 		return "", 0, errors.NewBadRequestError("Wiki feature is not enabled for this knowledge base")
 	}
 
-	return kbID, tenantID, nil
+	return kbID, kb.TenantID, nil
 }
 
 // getSlugParam extracts and cleans the slug from gin's wildcard path param
@@ -516,6 +514,10 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 		return
 	}
+	if types.UserSpacesEnabled() && req.Version < 1 {
+		c.JSON(http.StatusPreconditionRequired, gin.H{"error": "请刷新页面后携带当前 version 再保存"})
+		return
+	}
 
 	ctx := types.WithWikiEditSource(c.Request.Context(), types.WikiEditSourceUser)
 
@@ -741,6 +743,13 @@ func (h *WikiPageHandler) RevertPage(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	if types.UserSpacesEnabled() {
+		if req.ExpectedVersion < 1 {
+			c.JSON(http.StatusPreconditionRequired, gin.H{"error": "请刷新页面后携带当前 expected_version 再恢复"})
+			return
+		}
+		ctx = types.WithExpectedContentVersion(ctx, strconv.Itoa(req.ExpectedVersion))
+	}
 	updated, err := h.wikiService.RevertPageToVersion(ctx, kbID, slug, req.Version)
 	if err != nil {
 		switch {

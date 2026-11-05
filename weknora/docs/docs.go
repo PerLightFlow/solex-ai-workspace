@@ -37102,6 +37102,11 @@ const docTemplate = `{
                 "version"
             ],
             "properties": {
+                "expected_version": {
+                    "description": "Current version observed before restoring; required in account-space mode.",
+                    "type": "integer",
+                    "x-agent": true
+                },
                 "slug": {
                     "description": "Slug of the page to revert.",
                     "type": "string",

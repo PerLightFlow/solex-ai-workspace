@@ -72,7 +72,7 @@ def deploy():
     revision=meta['source_revision']
     if not re.fullmatch('[0-9a-f]{40}',revision):raise RuntimeError('Invalid revision')
     proof=json.loads((SOURCE/'rehearsal-acceptance.json').read_text())
-    if not proof.get('passed') or not proof.get('file_generation',{}).get('passed') or proof.get('source_revision')!=revision:
+    if not proof.get('passed') or not proof.get('file_generation',{}).get('passed') or proof.get('source_revision')!=revision or any(proof.get(k)!=meta.get(k) for k in ('backend_sha256','dist_sha256')):
         raise RuntimeError('This exact source must pass isolated collaboration and file-generation acceptance')
     command(['sha256sum','--check','--status','SHA256SUMS'],cwd=SOURCE)
     before=json.loads(sql("SELECT json_build_object('version',version,'dirty',dirty) FROM schema_migrations"))

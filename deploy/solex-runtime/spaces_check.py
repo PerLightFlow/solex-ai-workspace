@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from api_client import Client, ApiError, save_json
 from file_generation_check import check_file_generation, binary_download
+from urllib import request
 
 
 def expect(client, status, method, path, data=None, **kwargs):
@@ -16,6 +17,92 @@ def expect(client, status, method, path, data=None, **kwargs):
             return
         raise
     raise RuntimeError('Expected denial: ' + method + ' ' + path)
+
+
+def check_shared_knowledge(a, b, c, space, resource, agent, users, identities):
+    kb=resource['id']
+    marker='SPACE-'+secrets.token_hex(8)
+    content=('合成协作核验资料：校验码为 '+marker+'。采集芯片为 ESP32-P4。测试甲负责采集模块。').encode()
+    knowledge=a.call('POST',f'/knowledge-bases/{kb}/knowledge/file',upload=('collaboration.txt',content))['data']['id']
+    def grant(download):
+        a.call('POST',f'/spaces/{space}/resources',{**resource,'allow_edit':True,'allow_download':download})
+    def deny_download(client,path):
+        try:binary_download(client,path)
+        except ApiError as exc:
+            if exc.status not in (403,404):raise
+        else:raise RuntimeError('Original file was accessible without download permission')
+    for suffix in ('download','preview'):
+        deny_download(b,f'/knowledge/{knowledge}/{suffix}')
+    a.call('PUT',f'/spaces/{space}/members/{users[1]["id"]}',{'role':'viewer'})
+    grant(True)
+    assert binary_download(b,f'/knowledge/{knowledge}/download')==content
+    assert binary_download(b,f'/knowledge/{knowledge}/preview')==content
+    grant(False)
+    deny_download(b,f'/knowledge/{knowledge}/download')
+    a.call('PUT',f'/spaces/{space}/members/{users[1]["id"]}',{'role':'editor'})
+    deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+        status=a.call('GET','/knowledge/'+knowledge)['data']['parse_status']
+        if status=='completed':break
+        if status in ('failed','cancelled'):raise RuntimeError('Synthetic source parsing failed')
+        time.sleep(1)
+    else:raise RuntimeError('Synthetic source indexing timed out')
+    recall=b.call('POST',f'/knowledge-bases/{kb}/hybrid-search',{'query_text':'合成协作核验资料 校验码 采集芯片','match_count':5})
+    assert marker in json.dumps(recall,ensure_ascii=False)
+    invitation=a.call('POST',f'/spaces/{space}/invitations',{'email':identities[2]['email']})['data']['id']
+    c.call('POST',f'/spaces/invitations/{invitation}/accept')
+    session=c.call('POST','/sessions',{'title':'__shared_knowledge_acceptance__','agent_id':agent['id']})['data']['id']
+    payload={'query':'请检索明确授权的“合成协作核验资料”，回答资料中的校验码和采集芯片。不联网，不委派。','agent_id':agent['id'],'agent_source_tenant_id':users[1]['tenant_id'],'agent_enabled':True,'web_search_enabled':False,'disable_title':True}
+    req=request.Request(c.base+'/api/v1/agent-chat/'+session,data=json.dumps(payload).encode(),method='POST',headers={'Authorization':'Bearer '+c.token,'Content-Type':'application/json','Accept':'text/event-stream'})
+    answer='';complete=False
+    try:
+        with c.opener.open(req,timeout=180) as stream:
+            for raw in stream:
+                line=raw.decode().strip()
+                if not line.startswith('data:') or line[5:].strip() in ('','[DONE]'):continue
+                frame=json.loads(line[5:]);kind=frame.get('response_type')
+                if kind=='error':raise RuntimeError('Shared agent stream failed')
+                if kind=='answer':answer+=frame.get('content','')
+                if kind=='complete':complete=True;break
+        assert complete and marker in answer and 'ESP32' in answer
+        expect(a,(403,404),'GET',f'/sessions/{session}/messages')
+        a.call('DELETE',f'/spaces/{space}/members/{users[2]["id"]}')
+        expect(c,(403,404),'POST',f'/knowledge-bases/{kb}/hybrid-search',{'query_text':'合成协作核验资料'})
+        expect(c,(403,404),'GET','/knowledge/'+knowledge)
+    finally:c.call('DELETE','/sessions/'+session)
+    return {'source_download_grant':True,'source_preview_grant':True,'indexing_and_cross_personal_search':True,'real_shared_agent_answer':True,'private_chat':True,'member_revocation':True}
+
+
+def check_shared_wiki(a,b,space,tenant):
+    kb=a.call('POST','/knowledge-bases',{'name':'合成 Wiki 协作','type':'document','indexing_strategy':{'wiki_enabled':True},'wiki_config':{}})['data']['id']
+    a.call('POST',f'/spaces/{space}/resources',{'kind':'knowledge_base','id':kb,'source_tenant_id':tenant,'allow_edit':True})
+    path=f'/knowledgebase/{kb}/wiki'
+    page=b.call('POST',path+'/pages',{'slug':'synthetic-test','title':'合成页面','page_type':'concept','content':'初始正文'})
+    assert page['tenant_id']==tenant
+    expect(b,(428,),'PUT',path+'/pages/synthetic-test',{'content':'无版本不能覆盖'})
+    changed=b.call('PUT',path+'/pages/synthetic-test',{'content':'协作修订正文','version':page['version']})
+    expect(a,(409,),'PUT',path+'/pages/synthetic-test',{'content':'过期写入','version':page['version']})
+    history=b.call('GET',path+'/revisions/synthetic-test')
+    assert len(history['revisions'])>=1 and history['revisions'][0]['editor_id']
+    expect(a,(409,),'POST',path+'/revert',{'slug':'synthetic-test','version':page['version'],'expected_version':page['version']})
+    restored=a.call('POST',path+'/revert',{'slug':'synthetic-test','version':page['version'],'expected_version':changed['version']})
+    assert restored['content']=='初始正文' and restored['version']>changed['version']
+    b.call('DELETE',path+'/pages/synthetic-test')
+    b.call('POST',f'/spaces/recycle/{page["id"]}/restore?kind=wiki')
+    assert b.call('GET',path+'/pages/synthetic-test')['content']=='初始正文'
+    source=('合成项目：北极星验证仪。此文件仅用于系统验收。\n'
+            '主控选用 ESP32-P4，采集模块由合成用户甲负责，显示模块由合成用户乙负责。\n'
+            '项目采用离线图像检测，摄像头输出 RGB 数据，通过 MIPI CSI 接口传输。\n'
+            '设计决策：为降低网络依赖，检测结果在本地显示，资料保存在企业知识库。\n'
+            '硬件版本为 V1，软件版本为 V2。\n').encode()
+    b.call('POST',f'/knowledge-bases/{kb}/knowledge/file',upload=('wiki-fixture.txt',source))
+    deadline=time.monotonic()+300
+    while time.monotonic()<deadline:
+        pages=b.call('GET',path+'/pages')['pages']
+        if any(p['slug']!='synthetic-test' for p in pages):break
+        time.sleep(2)
+    else:raise RuntimeError('Automatic Wiki generation did not publish a synthetic page')
+    return {'shared_writer_storage_scope':True,'optimistic_version':True,'attribution':True,'restore':True,'recycle':True,'automatic_ingest':True}
 
 
 def run(base, state_dir, files=False, keep=False):
@@ -110,6 +197,10 @@ def run(base, state_dir, files=False, keep=False):
         listing=rows(a,'/knowledge-bases?agent_id='+agent['id']+'&agent_source_tenant_id='+str(tb))
         assert any(r['id']==kb for r in listing) and not any(r['id']==private for r in listing)
         checked('shared_agent_explicit_cross_personal_kb_scope')
+        result['knowledge_collaboration']=check_shared_knowledge(a,b,c,space,resource,agent,users,identities)
+        checked('shared_source_download_retrieval_and_real_agent')
+        result['wiki_collaboration']=check_shared_wiki(a,b,space,ta)
+        checked('shared_wiki_conflict_attribution_and_recovery')
         # A second path grants reading but cannot retain edit rights from the first.
         space2=a.call('POST','/spaces',{'name':'验收只读组'})['data']['id']
         invite=a.call('POST',f'/spaces/{space2}/invitations',{'email':identities[1]['email']})['data']['id']

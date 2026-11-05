@@ -252,8 +252,8 @@ export function getWikiRevision(kbId: string, slug: string, version: number) {
 // revertWikiPage rolls the page back to a stored revision. Applied as a
 // regular edit: the pre-revert state is snapshotted and version advances,
 // so a revert is itself revertable.
-export function revertWikiPage(kbId: string, slug: string, version: number) {
-  return post(`/api/v1/knowledgebase/${kbId}/wiki/revert`, { slug, version });
+export function revertWikiPage(kbId: string, slug: string, version: number, expectedVersion?: number) {
+  return post(`/api/v1/knowledgebase/${kbId}/wiki/revert`, { slug, version, expected_version: expectedVersion });
 }
 
 export interface WikiIndexEntryDTO {

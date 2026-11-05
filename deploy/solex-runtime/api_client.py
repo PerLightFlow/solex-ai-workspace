@@ -91,6 +91,8 @@ class Client:
         req = request.Request(self.base + '/api/v1' + path, data=body, headers=headers, method=method)
         try:
             with self.opener.open(req, timeout=180) as response:
+                if response.status == 204:
+                    return None
                 result = json.load(response)
         except error.HTTPError as exc:
             raise ApiError(method, path, exc.code) from None

@@ -120,8 +120,10 @@ func TestRevertWikiPageToVersion(t *testing.T) {
 	// distinguishable so the handler can answer 400 rather than 500.
 	_, err = h.svc.RevertPageToVersion(ctx, kb, "entity/acme", 2)
 	require.ErrorIs(t, err, ErrWikiRevertToCurrentVersion)
+	_, err = h.svc.RevertPageToVersion(types.WithExpectedContentVersion(ctx, "1"), kb, "entity/acme", 1)
+	require.ErrorIs(t, err, repository.ErrWikiPageConflict)
 
-	reverted, err := h.svc.RevertPageToVersion(ctx, kb, "entity/acme", 1)
+	reverted, err := h.svc.RevertPageToVersion(types.WithExpectedContentVersion(ctx, "2"), kb, "entity/acme", 1)
 	require.NoError(t, err)
 	require.Equal(t, 3, reverted.Version, "revert applies as a fresh edit")
 	require.Equal(t, "original body", reverted.Content)

@@ -17,8 +17,9 @@ class CutoverTests(unittest.TestCase):
         source=root/'release';source.mkdir()
         approved=root/'approved';(approved/'build-cache').mkdir(parents=True)
         revision='a'*40
-        (source/'release.json').write_text(json.dumps({'source_revision':revision,'release_id':'solex-runtime-'+revision[:12],'authorization_model':'account_spaces_v1','postgres_schema_before':136,'postgres_schema_after':137,'app_image':'fixture/app:new','ui_image':'fixture/ui:new'}))
-        (source/'rehearsal-acceptance.json').write_text(json.dumps({'passed':True,'source_revision':revision,'file_generation':{'passed':True}}))
+        hashes={'backend_sha256':'b'*64,'dist_sha256':'c'*64}
+        (source/'release.json').write_text(json.dumps({**hashes,'source_revision':revision,'release_id':'solex-runtime-'+revision[:12],'authorization_model':'account_spaces_v1','postgres_schema_before':136,'postgres_schema_after':137,'app_image':'fixture/app:new','ui_image':'fixture/ui:new'}))
+        (source/'rehearsal-acceptance.json').write_text(json.dumps({**hashes,'passed':True,'source_revision':revision,'file_generation':{'passed':True}}))
         migrations=source/'app/migrations/versioned';migrations.mkdir(parents=True)
         (migrations/'000137_user_spaces.up.sql').write_text('SELECT 1;')
         original={'Config':{'Image':'fixture:old'},'HostConfig':{'NetworkMode':'fixture'}}

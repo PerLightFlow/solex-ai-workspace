@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/api"
 	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -277,6 +279,9 @@ func (h *CustomAgentHandler) CreateAgent(c *gin.Context) {
 	createdAgent, err := h.service.CreateAgent(ctx, agent)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
+		if writeAgentAccessError(c, err) {
+			return
+		}
 		if err == service.ErrAgentNameRequired {
 			c.Error(errors.NewBadRequestError(err.Error()))
 			return
@@ -713,6 +718,9 @@ func (h *CustomAgentHandler) saveAgentUpdate(c *gin.Context, id string, req Upda
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"agent_id": id,
 		})
+		if writeAgentAccessError(c, err) {
+			return
+		}
 		switch err {
 		case service.ErrAgentNotFound:
 			c.Error(errors.NewNotFoundError("Agent not found"))
@@ -1113,6 +1121,22 @@ func normalizeAgentReasoningEffort(cfg *types.CustomAgentConfig) error {
 	// know about the accepted aliases ("none", "true", ...).
 	cfg.ReasoningEffort = string(level)
 	return nil
+}
+
+// Keep permission/validation failures actionable without exposing driver errors.
+func writeAgentAccessError(c *gin.Context, err error) bool {
+	var appErr *errors.AppError
+	if stderrors.As(err, &appErr) {
+		_ = c.Error(appErr)
+		return true
+	}
+	for _, sentinel := range []error{spaces.ErrForbidden, spaces.ErrInvalid, spaces.ErrNotFound, spaces.ErrConflict} {
+		if stderrors.Is(err, sentinel) {
+			spaceResponse(c, nil, err)
+			return true
+		}
+	}
+	return false
 }
 
 func authorizeAgentKnowledgeScope(ctx context.Context, cfg types.CustomAgentConfig) error {

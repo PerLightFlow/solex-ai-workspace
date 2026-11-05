@@ -499,7 +499,7 @@ async function doRevert() {
   if (!selectedRevision.value) return
   reverting.value = true
   try {
-    const res = await revertWikiPage(props.kbId, props.slug, selectedRevision.value.version)
+    const res = await revertWikiPage(props.kbId, props.slug, selectedRevision.value.version, currentVersion.value ?? undefined)
     const updated = ((res as any).data || (res as any)) as WikiPage
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.revertSuccess', { ver: selectedRevision.value.version }))
     emit('reverted', updated)
