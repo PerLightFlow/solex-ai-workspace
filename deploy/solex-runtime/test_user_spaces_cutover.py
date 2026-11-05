@@ -1,17 +1,25 @@
 """Exercise the destructive rollback boundary with fake Docker and a temp FS."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 spec=importlib.util.spec_from_file_location('user_spaces_cutover',Path(__file__).with_name('deploy-user-spaces.py'))
 cutover=importlib.util.module_from_spec(spec);spec.loader.exec_module(cutover)
 
 
 class CutoverTests(unittest.TestCase):
+    def test_frontend_probe_waits_for_nginx_listener(self):
+        opener=Mock()
+        opener.open.side_effect=[ConnectionResetError('starting'),io.BytesIO(b'<title>SOLEX</title><script src="/assets/app.js"></script>')]
+        with patch.object(cutover.request,'build_opener',return_value=opener),patch.object(cutover.time,'sleep'):
+            cutover.check_ui('http://127.0.0.1:18086')
+        self.assertEqual(opener.open.call_count,2)
+
     def simulate(self, fail_public=False):
         root=Path(self.enterContext(tempfile.TemporaryDirectory()))
         source=root/'release';source.mkdir()

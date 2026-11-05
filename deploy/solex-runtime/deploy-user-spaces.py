@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
-from urllib import request
+from urllib import request, error
 from api_client import Client, save_json
 from docker_control import APP, FRONTEND, POSTGRES, ALLOWED, ROOT, action, clone, docker, exists, inspect, remove, rename, root_helper, sql, wait_health
 
@@ -33,9 +33,18 @@ def migration(apply=False, fingerprint=None):
 
 def check_ui(url):
     opener=request.build_opener(request.ProxyHandler({}))
-    with opener.open(url+'/login',timeout=15) as r:body=r.read().decode()
-    if '<title>SOLEX' not in body or '/assets/' not in body:
-        raise RuntimeError('Candidate frontend is not ready')
+    deadline=time.monotonic()+60
+    while time.monotonic()<deadline:
+        try:
+            with opener.open(url+'/login',timeout=10) as r:body=r.read().decode()
+            if '<title>SOLEX' not in body or '/assets/' not in body:
+                raise RuntimeError('Candidate frontend returned unexpected content')
+            return
+        except (OSError,error.URLError):
+            # Docker's running state precedes nginx's first listener; its
+            # entrypoint can accept and reset a connection during startup.
+            time.sleep(1)
+    raise RuntimeError('Candidate frontend readiness timed out')
 
 
 def smoke(state):
