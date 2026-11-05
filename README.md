@@ -16,6 +16,7 @@
 | [`deploy/solex-infra/`](deploy/solex-infra/README.md) | 当前 Docker Compose 拓扑及搜索配置模板 |
 | [`SOLEX.md`](SOLEX.md) | 上游来源、完整源码校验、开发位置和升级方式 |
 | [`docs/ui-design.md`](docs/ui-design.md) | SOLEX 品牌、界面和协议兼容约束 |
+| [`docs/user-shared-spaces-implementation.md`](docs/user-shared-spaces-implementation.md) | 个人空间、按账号共享、版本恢复及权限迁移验收 |
 
 旧 Django 后端、旧自研前端、芯片规则库、项目卡片和过渡知识库适配服务已退役，不再作为第二套应用维护。其代码、旧发布记录和一次性迁移脚本保留在 Git 历史中，可从清理前提交 `40b9cd8df4b6ea00c42edc00ab63e57da023af80` 查询。
 
@@ -23,7 +24,9 @@
 
 - 管理员统一管理模型、MCP、联网搜索和运行配置；普通用户保留智能体提示词、知识库与已开放工具的业务选择。
 - 系统管理员可添加、修改和移除全局内置智能体，所有工作空间使用同一份定义；个人智能体和私有聊天保持原权限。
-- 企业资料通过知识库成员或组织共享，结合原文检索和 Wiki 回答；注册账户本身不等于获得所有知识库权限。
+- 每个账号固定一个私有个人空间；共享空间按个人账号邀请，默认使用者。企业资料通过明确授权共享，结合原文检索和 Wiki 回答；注册账户本身不获得其他人的知识库权限。
+- 共享个人原件默认只读，修改原件和下载原文件分别授权；共享智能体必须明确指定已授权知识库。成员撤回、权限变化同时约束接口、工具、文件和正在执行的智能体。
+- 原件和 Wiki 支持版本校验、恢复及回收站，保留操作人和时间；系统管理员可调整内容保留策略、交接已停用所有者的共享资料。
 - 文件展示上传人、上传时间、最后修改人和人工修改时间；有读取权限的用户可查看文件操作记录。后台解析不覆盖人工归属，历史来源不明时显示未知。
 
 详细行为及权限边界见 [运行版本说明](deploy/solex-runtime/README.md)。
@@ -49,8 +52,8 @@ python3 -m unittest discover -s deploy/solex-ui -p 'test_*.py'
 
 ## 部署与版本
 
-现有入口为 `http://192.168.85.199:8080`，需从能访问该内网的设备打开。服务与数据位于 `/data/solexai/yongjun/weknora-native`；服务器发布助手仍使用 `/data/solexai/yongjun/select-chip-agent/releases/`。
+现有入口为 `http://192.168.85.199:8080`，需从能访问该内网的设备打开。服务与数据位于 `/data/solexai/yongjun/weknora-native`；当前共享空间发布包位于 `/data/solexai/yongjun/build-cache/user-spaces-candidate-00f3bdfb5338`，受保护发布回执保存在服务目录下的 `runtime-releases/`。
 
-2026-11-03 只读核对：运行中的 app 与 frontend 镜像均标记源码提交 `40b9cd8df4b6ea00c42edc00ab63e57da023af80`。本次仓库整理保留该版本的完整应用源码，更新目录、文档和 CI，不重新发布容器。后续版本应以实际容器的 `org.opencontainers.image.revision` 和对应发布记录为准。
+2026-11-05 已部署共享空间版本，运行中的 app 与 frontend 对应源码提交 `00f3bdfb5338b49aae32424b438358a10056045b`。PostgreSQL schema 为 137、`dirty=false`，应用无迁移错误；原有 6 组账号与资源的读、编辑、下载权限比较一致。14 组隔离 API 验收、真实模型检索、Wiki 和 Excel 生成通过，正式入口及普通新账号权限已核对。后续版本以实际容器的 `org.opencontainers.image.revision` 和发布回执为准。
 
 维护既有实例请使用 [基础设施说明](deploy/solex-infra/README.md) 与 [完整发布流程](deploy/solex-runtime/README.md)。数据库、上传文档、模型文件、密钥、运行日志和发布产物不进入 Git。完整源码与单元测试通过不等于 50 人并发或万份文档容量验收。
