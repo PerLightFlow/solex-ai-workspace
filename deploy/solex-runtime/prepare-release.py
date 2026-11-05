@@ -24,7 +24,8 @@ PROMPT_FILES = (
 APP_RUNTIME = 'wechatopenai/weknora-app@sha256:25b20959b7456f7842ef55ed4feff3694dbd0c6f8af4117c1fb3c5dec6bdf14d'
 UI_RUNTIME = 'wechatopenai/weknora-ui@sha256:df26705d866997db07f3da78dabedc4f594b383566a3996810c166a5c6bee393'
 SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py', 'attribution_check.py', 'runtime_settings_check.py',
-           'file_generation_setup.py', 'file_generation_check.py', 'compose.file-generation.yaml')
+           'file_generation_setup.py', 'file_generation_check.py', 'compose.file-generation.yaml',
+           'docker_control.py', 'migrate-user-spaces.py', 'rehearse-user-spaces.py', 'spaces_check.py', 'deploy-user-spaces.py')
 EVIDENCE = ('go-build-info.txt', 'runtime-libraries.txt', 'WeKnora.sha256')
 
 
@@ -147,11 +148,11 @@ def prepare(backend_dir, dist, destination, revision):
             if not re.fullmatch(r'[0-9]{6}_[a-zA-Z0-9_]+\.(up|down)\.sql', script.name):
                 raise ValueError('Unexpected migration filename')
             migration_files.append(script)
-    for dialect, expected in (('versioned', 136), ('sqlite', 53)):
+    for dialect, expected in (('versioned', 137), ('sqlite', 54)):
         versions = [int(p.name[:6]) for p in migration_files if p.parent.name == dialect]
         if max(versions) != expected:
             raise ValueError('Reassess schema rollback compatibility before packaging changed migrations')
-        plain_file(MIGRATIONS / dialect / f'{expected:06d}_knowledge_provenance.up.sql')
+        plain_file(MIGRATIONS / dialect / f'{expected:06d}_user_spaces.up.sql')
     suffix = revision[:12]
     metadata = {
         'release_id': 'solex-runtime-' + suffix,
@@ -163,10 +164,10 @@ def prepare(backend_dir, dist, destination, revision):
         'backend_sha256': binary_hash,
         'dist_sha256': dist_hash,
         'build_tags': ['anydoc'],
-        # This release adds document attribution columns. Reassess this
-        # compatibility declaration before shipping other schema changes.
-        'postgres_schema_before': 135,
-        'postgres_schema_after': 136,
+        # Permission migration is not compatible with the legacy authorization code.
+        'authorization_model': 'account_spaces_v1',
+        'postgres_schema_before': 136,
+        'postgres_schema_after': 137,
     }
     destination.mkdir(mode=0o700)
     app, ui, evidence = destination / 'app', destination / 'ui', destination / 'build-evidence'

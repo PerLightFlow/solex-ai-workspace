@@ -41,6 +41,9 @@ func (s *Service) Require(ctx context.Context, kind, id string, tenant uint64, p
 // ValidateAgentUpdate checks every publication, including space ownership.
 // Editing the original cannot silently widen a receiving space's authority.
 func (s *Service) ValidateAgentUpdate(ctx context.Context, agent *types.CustomAgent, config types.CustomAgentConfig) error {
+	if e := s.ValidateAgentKnowledgeSelection(ctx, config); e != nil {
+		return e
+	}
 	var grants []types.SpaceGrant
 	if e := s.db.WithContext(ctx).Where("kind='agent' AND resource_id=? AND source_tenant_id=?", agent.ID, agent.TenantID).Find(&grants).Error; e != nil {
 		return e
@@ -57,6 +60,24 @@ func (s *Service) ValidateAgentUpdate(ctx context.Context, agent *types.CustomAg
 	for _, o := range owners {
 		if e := s.validateAgentConfig(ctx, o.OwnerSpaceID, config); e != nil {
 			return e
+		}
+	}
+	return nil
+}
+
+// Saving explicit IDs cannot attach another account's private knowledge.
+// Publication adds the receiving space's independent dependency check.
+func (s *Service) ValidateAgentKnowledgeSelection(ctx context.Context, config types.CustomAgentConfig) error {
+	if config.KBSelectionMode != "selected" {
+		return nil
+	}
+	for _, id := range config.KnowledgeBases {
+		kind, resource, tenant, e := s.ResourceScope(ctx, "knowledge_base", id, 0)
+		if e != nil {
+			return ErrForbidden
+		}
+		if e = s.Require(ctx, kind, resource, tenant, "read"); e != nil {
+			return ErrForbidden
 		}
 	}
 	return nil

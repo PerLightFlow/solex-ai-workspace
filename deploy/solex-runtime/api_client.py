@@ -72,11 +72,12 @@ class Client:
         self.token = ''
         self.opener = request.build_opener(request.ProxyHandler({}))
 
-    def call(self, method, path, data=None, form=False, upload=None):
+    def call(self, method, path, data=None, form=False, upload=None, extra_headers=None):
         headers = {'Accept-Language': 'zh-CN',
                    'Content-Type': 'application/x-www-form-urlencoded' if form else 'application/json'}
         if self.token:
             headers['Authorization'] = 'Bearer ' + self.token
+        headers.update(extra_headers or {})
         body = None if data is None else (parse.urlencode(data).encode() if form else json.dumps(data).encode())
         if upload is not None:
             filename, content = upload

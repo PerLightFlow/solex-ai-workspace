@@ -323,6 +323,15 @@ func (s *Service) RegisterCreated(ctx context.Context, kind, id string, tenant u
 	if u.TenantID != tenant {
 		return ErrForbidden
 	}
+	if kind == "agent" {
+		var agent types.CustomAgent
+		if e = s.db.WithContext(ctx).First(&agent, "id=? AND tenant_id=?", id, tenant).Error; e != nil {
+			return e
+		}
+		if e = s.ValidateAgentKnowledgeSelection(ctx, agent.Config); e != nil {
+			return e
+		}
+	}
 	if target == "" {
 		return s.db.WithContext(ctx).Create(&types.SpaceResource{Kind: kind, ResourceID: id, SourceTenantID: tenant, OwnerUserID: u.ID, CreatedBy: u.ID, CreatedAt: time.Now().UTC()}).Error
 	}

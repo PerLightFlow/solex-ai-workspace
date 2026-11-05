@@ -103,11 +103,11 @@ def sql(query, database='weknora'):
     return result.stdout.strip()
 
 
-def root_helper(code, directory, readonly=True):
+def root_helper(code, directory, readonly=True, image=None):
     directory = Path(directory).absolute()
     if not directory.is_relative_to(ALLOWED) or directory.is_symlink():
         raise ValueError('Helper destination outside approved directory')
-    image = inspect(APP)['Config']['Image']
+    image = image or inspect(APP)['Config']['Image']
     result = subprocess.run(['docker', 'run', '--rm', '-i', '--network', 'none',
         '--entrypoint', '/usr/bin/python3', '-v', str(ROOT) + ':/deployment' + (':ro' if readonly else ''),
         '-v', str(directory) + ':/state', image, '-'], input=code, text=True, capture_output=True)

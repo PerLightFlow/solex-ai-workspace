@@ -159,3 +159,18 @@ func TestExpiredInvitationDoesNotEnroll(t *testing.T) {
 	require.NoError(t, e)
 	require.Empty(t, rows)
 }
+
+func TestAgentSelectionRequiresUsersOwnLiveKnowledgeAccess(t *testing.T) {
+	s, c := fixture(t)
+	require.NoError(t, s.db.Exec("INSERT INTO knowledge_bases(id,tenant_id,name) VALUES('private',1,'私有')").Error)
+	config := types.CustomAgentConfig{KBSelectionMode: "selected", KnowledgeBases: []string{"private"}}
+	require.NoError(t, s.ValidateAgentKnowledgeSelection(c[0], config))
+	require.ErrorIs(t, s.ValidateAgentKnowledgeSelection(c[1], config), ErrForbidden)
+	o, e := s.Create(c[0], "协作", "")
+	require.NoError(t, e)
+	join(t, s, c[0], c[1], o.ID, "u2@example.test")
+	require.NoError(t, s.Share(c[0], o.ID, "knowledge_base", "private", 1, false, false))
+	require.NoError(t, s.ValidateAgentKnowledgeSelection(c[1], config))
+	require.NoError(t, s.Unshare(c[0], o.ID, "knowledge_base", "private", 1))
+	require.ErrorIs(t, s.ValidateAgentKnowledgeSelection(c[1], config), ErrForbidden)
+}
