@@ -37,6 +37,7 @@ type DeploymentCapability struct {
 
 // DeploymentCapabilitiesData is returned by GET /system/capabilities.
 type DeploymentCapabilitiesData struct {
+	UserSpaces     bool                            `json:"user_spaces"`
 	ManagedRuntime bool                            `json:"managed_runtime"`
 	Edition        string                          `json:"edition"`
 	Capabilities   map[string]DeploymentCapability `json:"capabilities"`
@@ -117,6 +118,7 @@ func BuildDeploymentCapabilities(
 
 	return DeploymentCapabilitiesData{
 		ManagedRuntime: types.ManagedRuntimeEnabled(),
+		UserSpaces:     types.UserSpacesEnabled(),
 		Edition:        edition,
 		Capabilities: map[string]DeploymentCapability{
 			"organizations":                    organizations,

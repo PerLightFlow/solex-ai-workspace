@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/common"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -363,8 +364,10 @@ func (r *knowledgeRepository) UpdateKnowledge(ctx context.Context, knowledge *ty
 	if knowledge.CustomMetadata == nil {
 		omit = append(append([]string{}, omit...), "custom_metadata")
 	}
-	err := r.db.WithContext(ctx).Omit(omit...).Save(knowledge).Error
-	return err
+	if types.UserSpacesEnabled() && types.IsKnowledgeUserMutation(ctx) {
+		return spaces.MutateKnowledge(ctx, r.db, knowledge.ID, func(tx *gorm.DB) error { return tx.Omit(omit...).Save(knowledge).Error })
+	}
+	return r.db.WithContext(ctx).Omit(omit...).Save(knowledge).Error
 }
 
 // UpdateKnowledgeBatch updates knowledge items in batch
@@ -631,6 +634,9 @@ func (r *knowledgeRepository) UpdateKnowledgeColumns(
 		case []byte:
 			values["error_message"] = common.CleanInvalidUTF8(string(v))
 		}
+	}
+	if types.UserSpacesEnabled() && (types.IsKnowledgeUserMutation(ctx) || values["file_path"] != nil) {
+		return spaces.MutateKnowledge(ctx, r.db, id, func(tx *gorm.DB) error { return tx.Model(&types.Knowledge{}).Where("id=?", id).Updates(values).Error })
 	}
 	return r.db.WithContext(ctx).Model(&types.Knowledge{}).Where("id = ?", id).Updates(values).Error
 }

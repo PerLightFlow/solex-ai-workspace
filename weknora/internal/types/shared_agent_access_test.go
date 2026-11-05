@@ -52,3 +52,13 @@ func TestSharedAgentKBScopeCopiesSelection(t *testing.T) {
 	require.True(t, scope.Allows("kb", 2))
 	require.False(t, scope.Allows("other", 2))
 }
+
+func TestAccountSharedAgentExplicitCrossStorageScope(t *testing.T) {
+	t.Setenv("SOLEX_USER_SPACES", "true")
+	a := &CustomAgent{TenantID: 1, Config: CustomAgentConfig{KBSelectionMode: "selected", KnowledgeBases: []string{"kb"}}}
+	scope := NewSharedAgentKBScope(a)
+	require.True(t, scope.Allows("kb", 2))
+	require.False(t, scope.Allows("private", 1))
+	a.Config.KBSelectionMode = "all"
+	require.True(t, NewSharedAgentKBScope(a).IsEmpty())
+}

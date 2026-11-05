@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -113,6 +114,24 @@ func ResolveKB(ctx context.Context, request KBRequest, kb *types.KnowledgeBase, 
 			KnowledgeBase: kb, Caller: request.Caller,
 			EffectiveTenantID: kb.TenantID, Permission: permission, operationPermission: required,
 		}, nil
+	}
+	if types.UserSpacesEnabled() {
+		policy, err := spaces.Current()
+		if err != nil {
+			return nil, ErrForbidden
+		}
+		permission, err := policy.Check(ctx, "knowledge_base", kb.ID, kb.TenantID)
+		if err != nil || !permission.Read || (required == types.OrgRoleEditor && !permission.Edit) || (required == types.OrgRoleAdmin && !permission.Manage) {
+			return nil, ErrForbidden
+		}
+		role := types.OrgRoleViewer
+		if permission.Edit {
+			role = types.OrgRoleEditor
+		}
+		if permission.Manage {
+			role = types.OrgRoleAdmin
+		}
+		return grant(role)
 	}
 	if kb.TenantID == request.Caller.TenantID {
 		return grant(types.OrgRoleAdmin)

@@ -387,8 +387,8 @@ export function createKnowledgeBase(data: {
     wiki_enabled: boolean;
     graph_enabled: boolean;
   };
-}) {
-  return post(`/api/v1/knowledge-bases`, data);
+}, ownerSpaceId?: string) {
+  return post(`/api/v1/knowledge-bases`, data, { headers: ownerSpaceId ? { "X-Solex-Space-ID": ownerSpaceId } : {} });
 }
 
 export function getKnowledgeBaseById(id: string, options?: { agent_id?: string; agent_source_tenant_id?: string }) {
@@ -642,7 +642,7 @@ export function getKnowledgeDetails(id: string, options?: { agent_id?: string; a
 
 export function updateManualKnowledge(
   id: string,
-  data: { title: string; content: string; status: string; process_config?: KnowledgeProcessOverrides },
+  data: { title: string; content: string; status: string; expected_revision?: string; process_config?: KnowledgeProcessOverrides },
 ) {
   return put(`/api/v1/knowledge/manual/${id}`, data);
 }
@@ -722,12 +722,12 @@ export function revertDocumentChunk(knowledgeId: string, chunkId: string, revisi
   });
 }
 
-export function updateKnowledgeMetadata(knowledgeId: string, customMetadata: Record<string, unknown>) {
-  return put(`/api/v1/knowledge/${knowledgeId}`, { custom_metadata: customMetadata });
+export function updateKnowledgeMetadata(knowledgeId: string, customMetadata: Record<string, unknown>, expectedRevision?: string) {
+  return put(`/api/v1/knowledge/${knowledgeId}`, { custom_metadata: customMetadata, expected_revision: expectedRevision });
 }
 
-export function updateKnowledgeSummary(knowledgeId: string, description: string) {
-  return put(`/api/v1/knowledge/${knowledgeId}`, { description });
+export function updateKnowledgeSummary(knowledgeId: string, description: string, expectedRevision?: string) {
+  return put(`/api/v1/knowledge/${knowledgeId}`, { description, expected_revision: expectedRevision });
 }
 
 export function regenerateKnowledgeSummary(knowledgeId: string) {

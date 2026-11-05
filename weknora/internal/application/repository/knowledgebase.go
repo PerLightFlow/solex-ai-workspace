@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -24,6 +25,14 @@ func NewKnowledgeBaseRepository(db *gorm.DB) interfaces.KnowledgeBaseRepository 
 
 // CreateKnowledgeBase creates a new knowledge base
 func (r *knowledgeBaseRepository) CreateKnowledgeBase(ctx context.Context, kb *types.KnowledgeBase) error {
+	if types.UserSpacesEnabled() && types.CallerFromContext(ctx).UserID != "" {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if e := tx.Create(kb).Error; e != nil {
+				return e
+			}
+			return spaces.New(tx).RegisterCreated(ctx, "knowledge_base", kb.ID, kb.TenantID)
+		})
+	}
 	return r.db.WithContext(ctx).Create(kb).Error
 }
 
@@ -87,6 +96,23 @@ func (r *knowledgeBaseRepository) ListKnowledgeBasesByTenantID(
 	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND is_temporary = ?", tenantID, false).
 		Order("created_at DESC").Find(&kbs).Error; err != nil {
 		return nil, err
+	}
+	if types.UserSpacesEnabled() && types.CallerFromContext(ctx).UserID != "" {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		filtered := make([]*types.KnowledgeBase, 0, len(kbs))
+		for _, kb := range kbs {
+			a, err := p.Check(ctx, "knowledge_base", kb.ID, kb.TenantID)
+			if err != nil {
+				return nil, err
+			}
+			if a.Read && p.IsPersonalOwner(ctx, "knowledge_base", kb.ID, kb.TenantID) {
+				filtered = append(filtered, kb)
+			}
+		}
+		kbs = filtered
 	}
 	return kbs, nil
 }

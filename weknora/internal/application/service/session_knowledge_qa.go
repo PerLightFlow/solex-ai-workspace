@@ -14,6 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -70,6 +71,19 @@ func (s *sessionService) KnowledgeQA(
 	knowledgeBaseIDs, knowledgeIDs, err := s.resolveKnowledgeBases(ctx, req)
 	if err != nil {
 		return err
+	}
+
+	if types.UserSpacesEnabled() {
+		policy, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		var cancel context.CancelFunc
+		ctx, cancel, e = policy.GuardRun(ctx, req.CustomAgent, knowledgeBaseIDs)
+		if e != nil {
+			return e
+		}
+		defer cancel()
 	}
 
 	// Resolve chat model ID using shared helper
@@ -691,6 +705,9 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 	var understandProgress *chatpipeline.StageProgress
 	var understandStart time.Time
 	for _, eventType := range eventList {
+		if e := types.CheckRunAuthorization(ctx); e != nil {
+			return e
+		}
 		stageStart := time.Now()
 		// Wrap each pipeline stage in a Langfuse span so the trace timeline
 		// shows the gaps between LLM/embedding/rerank generations (the work

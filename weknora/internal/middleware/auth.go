@@ -331,6 +331,14 @@ func resolveTargetTenant(
 ) (targetTenantID uint64, tenant *types.Tenant, crossTenantSwitch bool, ok bool) {
 	ctx := c.Request.Context()
 
+	if types.UserSpacesEnabled() {
+		header := c.GetHeader("X-Tenant-ID")
+		if user.TenantID == 0 || (header != "" && header != strconv.FormatUint(user.TenantID, 10)) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "个人空间仅本人使用，不能切换到他人的个人空间"})
+			return 0, nil, false, false
+		}
+		return user.TenantID, nil, false, true
+	}
 	// 默认 target = JWT 里的 tenant_id（来自登录或 /auth/switch-tenant），
 	// 兼容 ValidateToken 的 fallback：claim 缺失时 jwtTenantID == user.TenantID。
 	targetTenantID = jwtTenantID

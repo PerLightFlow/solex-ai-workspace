@@ -562,7 +562,8 @@
 
       <!-- 共享设置（仅编辑模式） -->
       <div v-if="editorMode === 'edit' && activeKbId && currentSection === 'share'" class="section">
-        <KBShareSettings :kb-id="activeKbId" :can-share="canShareKB" />
+        <UserResourceSharing v-if="deployment.userSpaces" kind="knowledge_base" :id="activeKbId" />
+        <KBShareSettings v-else :kb-id="activeKbId" :can-share="canShareKB" />
       </div>
 
       <!-- 活动记录（仅编辑模式，KB 所属租户内 Owner/Admin） -->
@@ -666,6 +667,9 @@ import KBAdvancedSettings from './settings/KBAdvancedSettings.vue'
 import ModelSelector from '@/components/ModelSelector.vue'
 import GraphSettings from './settings/GraphSettings.vue'
 import KBShareSettings from './settings/KBShareSettings.vue'
+import UserResourceSharing from '@/components/UserResourceSharing.vue'
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
+const deployment = useDeploymentCapabilitiesStore()
 import DataSourceSettings from './settings/DataSourceSettings.vue'
 import KnowledgeBaseActivitySettings from './settings/KnowledgeBaseActivitySettings.vue'
 import ImagePipelineSettings from './ImagePipelineSettings.vue'
@@ -697,6 +701,7 @@ const imageAttrConditionDisplays = computed(() =>
 const props = defineProps<{
   visible: boolean
   mode: 'create' | 'edit'
+  ownerSpaceId?: string
   kbId?: string
   initialType?: 'document' | 'faq'
 }>()
@@ -1747,7 +1752,7 @@ const doSubmit = async () => {
 
     if (editorMode.value === 'create') {
       // 创建模式：一次性创建知识库及所有配置
-      const result: any = await createKnowledgeBase(managedKnowledgePayload(data, managedRuntime.value))
+      const result: any = await createKnowledgeBase(managedKnowledgePayload(data, managedRuntime.value), props.ownerSpaceId)
       if (!result.success || !result.data?.id) {
         throw new Error(result.message || t('knowledgeEditor.messages.createFailed'))
       }

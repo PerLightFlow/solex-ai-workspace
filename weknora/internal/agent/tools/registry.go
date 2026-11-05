@@ -179,7 +179,7 @@ func (r *ToolRegistry) ExecuteTool(
 	name string,
 	args json.RawMessage,
 ) (*types.ToolResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := types.CheckRunAuthorization(ctx); err != nil {
 		return &types.ToolResult{Success: false, Error: err.Error()}, err
 	}
 	common.PipelineInfo(ctx, "AgentTool", "execute_start", map[string]interface{}{

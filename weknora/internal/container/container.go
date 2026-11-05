@@ -769,6 +769,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return handler.NewSkillHandler(s, s, agents)
 	}))
 	must(container.Provide(handler.NewOrganizationHandler))
+	must(container.Provide(handler.NewUserSpaceHandler))
 	must(container.Provide(handler.NewMemoryHandler))
 	must(container.Provide(handler.NewAutomationHandler))
 
@@ -2137,9 +2138,14 @@ func startDataSourceScheduler(scheduler *datasource.Scheduler, cleaner interface
 // "processing" past a configurable threshold (see HousekeepingService for
 // rationale). Best-effort: a startup error is logged but does NOT abort the
 // container — the rest of the system stays usable.
-func startHousekeepingService(svc *service.HousekeepingService, cleaner interfaces.ResourceCleaner) {
+func startHousekeepingService(svc *service.HousekeepingService, cleaner interfaces.ResourceCleaner, knowledge interfaces.KnowledgeService) {
 	if svc == nil {
 		return
+	}
+	if purger, ok := knowledge.(interface {
+		PurgeRetainedFile(context.Context, *types.KnowledgeBase, string) error
+	}); ok {
+		svc.SetRetainedFileCleaner(purger.PurgeRetainedFile)
 	}
 	if err := svc.Start(context.Background()); err != nil {
 		logger.Warnf(context.Background(), "[Container] housekeeping start failed: %v", err)

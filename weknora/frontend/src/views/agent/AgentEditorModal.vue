@@ -1840,7 +1840,8 @@
       <!-- 共享管理（仅编辑模式且非内置智能体） -->
       <div v-if="editorMode === 'edit' && editorAgent?.id && !editorAgent?.is_builtin"
         v-show="currentSection === 'share'" class="section">
-        <AgentShareSettings :agent-id="editorAgent.id" :agent="editorAgent" />
+        <UserResourceSharing v-if="deploymentCapabilities.userSpaces" kind="agent" :id="editorAgent.id" :tenant="editorAgent.tenant_id" />
+        <AgentShareSettings v-else :agent-id="editorAgent.id" :agent="editorAgent" />
       </div>
     </div>
 
@@ -1952,6 +1953,7 @@ import SandboxSkillsPanel from '@/components/SandboxSkillsPanel.vue';
 import SettingDrawer from '@/components/settings/SettingDrawer.vue';
 import KBParserSettings, { type ParserEngineRule } from '@/views/knowledge/settings/KBParserSettings.vue';
 import AgentShareSettings from '@/components/AgentShareSettings.vue';
+import UserResourceSharing from '@/components/UserResourceSharing.vue';
 import { SKILL_ICON } from '@/types/mention';
 import { listEmbedChannels } from '@/api/embed';
 import { ASSISTANT_ACCESS_LEVELS, type AssistantAccessLevel } from '@/api/assistant';
@@ -2004,6 +2006,7 @@ const { t, locale: i18nLocale } = useI18n();
 const props = defineProps<{
   visible: boolean;
   mode: 'create' | 'edit';
+  ownerSpaceId?: string;
   agent?: CustomAgent | null;
   initialSection?: string;
   initialHighlightField?: string;
@@ -3821,6 +3824,7 @@ watch(() => props.visible, async (val) => {
           formData.value.description = getPresetDefaultDescription(preset);
         }
       }
+      if (props.ownerSpaceId) { formData.value.config.kb_selection_mode = "none"; formData.value.config.knowledge_bases = []; kbSelectionMode.value = "none" }
       applyDefaultModelsIfEmpty()
     }
 
@@ -5177,7 +5181,7 @@ const handleSave = async () => {
   saving.value = true;
   try {
     if (editorMode.value === 'create') {
-      const result: any = await (props.systemBuiltin ? createSystemAgent(payload) : createAgent(payload));
+      const result: any = await (props.systemBuiltin ? createSystemAgent(payload) : createAgent(payload, props.ownerSpaceId));
       const created = result?.data as CustomAgent | undefined;
       if (!created?.id) {
         throw new Error(result?.message || t('agent.messages.saveFailed'));
@@ -5200,7 +5204,7 @@ const handleSave = async () => {
       emit('success', created);
       if (props.systemBuiltin) handleClose();
     } else {
-      const updated: any = await (props.systemBuiltin ? updateSystemAgent(formData.value.id, payload) : updateAgent(formData.value.id, payload));
+      const updated: any = await (props.systemBuiltin ? updateSystemAgent(formData.value.id, payload) : updateAgent(formData.value.id, payload, deploymentCapabilities.userSpaces ? props.agent?.tenant_id : undefined));
       MessagePlugin.success(t('agent.messages.updated'));
       emit('success');
       handleClose();

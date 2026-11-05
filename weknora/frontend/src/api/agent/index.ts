@@ -231,13 +231,13 @@ export interface AllowedToolsWarnings {
   dropped?: string[];       // 由其他设置控制的工具，已从列表移除
 }
 
-export function createAgent(data: CreateAgentRequest) {
-  return post<{ data: CustomAgent; allowed_tools_warnings?: AllowedToolsWarnings }>('/api/v1/agents', data).then(brandAgentResponse);
+export function createAgent(data: CreateAgentRequest, ownerSpaceId?: string) {
+  return post<{ data: CustomAgent; allowed_tools_warnings?: AllowedToolsWarnings }>('/api/v1/agents', data, { headers: ownerSpaceId ? { 'X-Solex-Space-ID': ownerSpaceId } : {} }).then(brandAgentResponse);
 }
 
 // 更新智能体
-export function updateAgent(id: string, data: UpdateAgentRequest) {
-  return put<{ data: CustomAgent; allowed_tools_warnings?: AllowedToolsWarnings }>(`/api/v1/agents/${id}`, data).then(brandAgentResponse);
+export function updateAgent(id: string, data: UpdateAgentRequest, sourceTenantId?: number) {
+  return put<{ data: CustomAgent; allowed_tools_warnings?: AllowedToolsWarnings }>(`/api/v1/agents/${id}`, data, { headers: sourceTenantId ? { "X-Source-Tenant-ID": sourceTenantId } : {} }).then(brandAgentResponse);
 }
 
 // 删除智能体

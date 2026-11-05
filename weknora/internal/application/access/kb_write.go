@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -16,6 +17,16 @@ func RequireKBWrite(ctx context.Context, kb *types.KnowledgeBase) error {
 	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && !scope.FullAccess &&
 		!scope.HasCapability(types.APIKeyCapabilityIngest) {
 		return ErrForbidden
+	}
+	if types.UserSpacesEnabled() && types.CallerFromContext(ctx).UserID != "" {
+		policy, err := spaces.Current()
+		if err != nil {
+			return ErrForbidden
+		}
+		a, err := policy.Check(ctx, "knowledge_base", kb.ID, kb.TenantID)
+		if err != nil || !a.Edit {
+			return ErrForbidden
+		}
 	}
 	if !HasKBGrant(ctx, kb.ID, kb.TenantID, types.OrgRoleEditor) {
 		return ErrForbidden

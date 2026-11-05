@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -43,6 +44,22 @@ func HasKBGrant(ctx context.Context, kbID string, tenantID uint64, required type
 	if kbID == "" || tenantID == 0 {
 		return false
 	}
+	if types.UserSpacesEnabled() && caller.UserID != "" {
+		p, e := spaces.Current()
+		if e != nil {
+			return false
+		}
+		permission := "read"
+		if required == types.OrgRoleEditor {
+			permission = "edit"
+		}
+		if required == types.OrgRoleAdmin {
+			permission = "manage"
+		}
+		if p.Require(ctx, "knowledge_base", kbID, tenantID, permission) != nil {
+			return false
+		}
+	}
 	grants, _ := ctx.Value(types.KBGrantsContextKey).([]kbGrant)
 	for _, grant := range grants {
 		if (caller.TenantID != 0 || grant.task) && grant.caller == caller && grant.kbID == kbID &&
@@ -82,6 +99,24 @@ func (p *KBPermissions) Check(kbID string, ownerTenantID uint64, required types.
 	}
 	if err := types.AuthorizeTenantAPIKeyKnowledgeBases(p.ctx, kbID); err != nil {
 		return false, err
+	}
+	if types.UserSpacesEnabled() {
+		policy, err := spaces.Current()
+		if err != nil {
+			return false, err
+		}
+		a, err := policy.Check(p.ctx, "knowledge_base", kbID, ownerTenantID)
+		if err != nil {
+			return false, err
+		}
+		switch required {
+		case types.OrgRoleAdmin:
+			return a.Manage, nil
+		case types.OrgRoleEditor:
+			return a.Edit, nil
+		default:
+			return a.Read, nil
+		}
 	}
 	if (p.caller.TenantID == ownerTenantID && required == types.OrgRoleViewer) ||
 		HasKBGrant(p.ctx, kbID, ownerTenantID, required) {

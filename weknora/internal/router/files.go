@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/filetransport"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -176,6 +177,18 @@ func newFileServeHandler(
 		if !ok {
 			return
 		}
+		if types.UserSpacesEnabled() {
+			policy, err := spaces.Current()
+			if err != nil || resourceCatalog == nil {
+				c.Status(http.StatusForbidden)
+				return
+			}
+			_, resource, err := resourceCatalog.ResolvePath(c.Request.Context(), filePath)
+			if err != nil || resource == nil || policy.AuthorizeStoredResource(c.Request.Context(), resource) != nil {
+				c.Status(http.StatusForbidden)
+				return
+			}
+		}
 
 		tenant, _ := c.Request.Context().Value(types.TenantInfoContextKey).(*types.Tenant)
 		if tenant == nil {
@@ -217,7 +230,11 @@ func newFileServeHandler(
 		}
 
 		contentType, inline := secutils.SafeContentTypeByFilename(filePath)
-		streamStoredFile(c, reader, contentType, inline, "public, max-age=86400", "/files", filePath)
+		cache := "public, max-age=86400"
+		if types.UserSpacesEnabled() {
+			cache = "private, no-store"
+		}
+		streamStoredFile(c, reader, contentType, inline, cache, "/files", filePath)
 	}
 }
 
@@ -547,6 +564,10 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 		storageResolver = resolvers[0]
 	}
 	return func(c *gin.Context) {
+		if types.UserSpacesEnabled() {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"message": "旧文件链接已失效，请从知识库或对话重新打开"})
+			return
+		}
 		ctx := c.Request.Context()
 		clientIP := c.ClientIP()
 		userAgent := c.Request.UserAgent()

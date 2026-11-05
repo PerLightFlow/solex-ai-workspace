@@ -4,10 +4,11 @@ package types
 // agent. It is not proof that a caller can use that agent. The zero value, an
 // unknown selection mode, and an empty selection all deny access.
 type SharedAgentKBScope struct {
-	tenantID uint64
-	all      bool
-	ids      []string
-	selected map[string]struct{}
+	tenantID      uint64
+	all           bool
+	ids           []string
+	selected      map[string]struct{}
+	accountScoped bool
 }
 
 // NewSharedAgentKBScope snapshots an authorized agent configuration.
@@ -15,10 +16,10 @@ func NewSharedAgentKBScope(agent *CustomAgent) SharedAgentKBScope {
 	if agent == nil || agent.TenantID == 0 {
 		return SharedAgentKBScope{}
 	}
-	scope := SharedAgentKBScope{tenantID: agent.TenantID}
+	scope := SharedAgentKBScope{tenantID: agent.TenantID, accountScoped: UserSpacesEnabled()}
 	switch agent.Config.KBSelectionMode {
 	case "all":
-		scope.all = true
+		scope.all = !scope.accountScoped
 	case "selected":
 		scope.selected = make(map[string]struct{}, len(agent.Config.KnowledgeBases))
 		for _, id := range agent.Config.KnowledgeBases {
@@ -47,7 +48,7 @@ func (s SharedAgentKBScope) IDs() []string { return append([]string{}, s.ids...)
 
 // Allows checks both the KB selection and the authoritative owner tenant.
 func (s SharedAgentKBScope) Allows(kbID string, tenantID uint64) bool {
-	if kbID == "" || s.tenantID == 0 || s.tenantID != tenantID {
+	if kbID == "" || s.tenantID == 0 || (!s.accountScoped && s.tenantID != tenantID) {
 		return false
 	}
 	_, selected := s.selected[kbID]

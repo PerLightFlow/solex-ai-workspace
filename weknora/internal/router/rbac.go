@@ -634,3 +634,23 @@ func (g *rbacGuards) KBAccessWriteFromChunkIDParam(param string) gin.HandlerFunc
 		g.cfg,
 	)
 }
+
+// Downloads retain the old policy until account-level spaces are activated.
+func (g *rbacGuards) KBAccessDownload(param string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if types.UserSpacesEnabled() {
+			g.KBAccessRead(param)(c)
+		} else {
+			g.KBAccessWrite(param)(c)
+		}
+	}
+}
+func (g *rbacGuards) KBAccessDownloadFromKnowledgeID(param string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if types.UserSpacesEnabled() {
+			g.KBAccessReadFromKnowledgeIDParam(param)(c)
+		} else {
+			g.KBAccessWriteFromKnowledgeIDParam(param)(c)
+		}
+	}
+}

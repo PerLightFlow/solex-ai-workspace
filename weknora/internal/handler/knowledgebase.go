@@ -19,6 +19,7 @@ import (
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -594,7 +595,7 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 	tenantID := c.GetUint64(types.TenantIDContextKey.String())
 	storeView := h.resolveKBStoreView(c.Request.Context(), kb, tenantID)
 	var extras map[string]interface{}
-	if kb.TenantID != tenantID && permission != "" {
+	if (types.UserSpacesEnabled() || kb.TenantID != tenantID) && permission != "" {
 		// Include my_permission in data so frontend can show role (e.g. "只读") instead of "--" for agent-visible KBs
 		extras = map[string]interface{}{"my_permission": permission}
 	}
@@ -633,7 +634,19 @@ func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"success": true, "data": []interface{}{}})
 			return
 		}
-		kbs, err := h.service.ListKnowledgeBasesByTenantID(ctx, agent.TenantID)
+		var kbs []*types.KnowledgeBase
+		if types.UserSpacesEnabled() {
+			for _, id := range scope.IDs() {
+				kb, e := h.service.GetKnowledgeBaseByIDOnly(ctx, id)
+				if e != nil {
+					err = e
+					break
+				}
+				kbs = append(kbs, kb)
+			}
+		} else {
+			kbs, err = h.service.ListKnowledgeBasesByTenantID(ctx, agent.TenantID)
+		}
 		if err != nil {
 			logger.ErrorWithFields(ctx, err, nil)
 			c.Error(apperrors.NewInternalServerError(err.Error()))
@@ -1383,7 +1396,7 @@ func (h *KnowledgeBaseHandler) DeleteKnowledgeBase(c *gin.Context) {
 
 	// Only owner (admin with matching tenant) can delete knowledge base
 	tenantID, _ := c.Get(types.TenantIDContextKey.String())
-	if kb.TenantID != tenantID.(uint64) || permission != types.OrgRoleAdmin {
+	if (!types.UserSpacesEnabled() && kb.TenantID != tenantID.(uint64)) || permission != types.OrgRoleAdmin {
 		c.Error(apperrors.NewForbiddenError("Only knowledge base owner can delete"))
 		return
 	}
@@ -1465,6 +1478,17 @@ func (h *KnowledgeBaseHandler) CopyKnowledgeBase(c *gin.Context) {
 		return
 	}
 	sourceKB := sourceGrant.KnowledgeBase
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			spaceResponse(c, nil, e)
+			return
+		}
+		if e = p.Require(ctx, "knowledge_base", sourceKB.ID, sourceKB.TenantID, "manage"); e != nil {
+			spaceResponse(c, nil, e)
+			return
+		}
+	}
 	if sourceKB.TenantID != caller.TenantID {
 		_ = c.Error(errors.NewForbiddenError("No permission to copy this knowledge base"))
 		return

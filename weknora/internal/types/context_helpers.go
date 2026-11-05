@@ -107,10 +107,11 @@ func IsEmbedQuery(ctx context.Context) bool {
 // initiated the operation, while tasks created by schedulers remain
 // attributable to the system.
 type TaskInitiator struct {
-	UserID     string     `json:"user_id,omitempty"`
-	Role       TenantRole `json:"role,omitempty"`
-	APIKeyID   uint64     `json:"api_key_id,omitempty"`
-	APIKeyName string     `json:"api_key_name,omitempty"`
+	CallerTenantID uint64     `json:"caller_tenant_id,omitempty"`
+	UserID         string     `json:"user_id,omitempty"`
+	Role           TenantRole `json:"role,omitempty"`
+	APIKeyID       uint64     `json:"api_key_id,omitempty"`
+	APIKeyName     string     `json:"api_key_name,omitempty"`
 	// Agent is set when the task was submitted by an agent acting for UserID.
 	Agent *AuditAgentAction `json:"agent,omitempty"`
 }
@@ -161,6 +162,7 @@ func TaskInitiatorFromContext(ctx context.Context) TaskInitiator {
 	if !ok || IsSyntheticUserID(userID) {
 		return initiator
 	}
+	initiator.CallerTenantID = CallerFromContext(ctx).TenantID
 	initiator.UserID = userID
 	initiator.Role = TenantRoleFromContext(ctx)
 	return initiator
@@ -170,6 +172,9 @@ func TaskInitiatorFromContext(ctx context.Context) TaskInitiator {
 // legacy payloads are a no-op and therefore retain the system-task fallback.
 // API key identity is restored for audit display only — not as TenantAPIKeyScope.
 func (i TaskInitiator) Apply(ctx context.Context) context.Context {
+	if i.UserID != "" && i.CallerTenantID != 0 {
+		ctx = WithCaller(ctx, Caller{UserID: i.UserID, TenantID: i.CallerTenantID, Role: i.Role})
+	}
 	if i.UserID != "" {
 		ctx = context.WithValue(ctx, UserIDContextKey, i.UserID)
 		if i.Role.IsValid() {

@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
@@ -158,6 +159,16 @@ func deleteExtractedImages(
 	}
 	logger.Infof(ctx, "Deleting %d extracted images", len(imageURLs))
 	for _, url := range imageURLs {
+		if types.UserSpacesEnabled() {
+			policy, e := spaces.Current()
+			if e != nil {
+				continue
+			}
+			retained, e := policy.FileRetained(ctx, url)
+			if e != nil || retained {
+				continue
+			}
+		}
 		if !releaser.deletable(ctx, url) {
 			logger.Infof(ctx, "Keeping extracted image %s: another owner may still reference it", url)
 			continue
@@ -479,6 +490,15 @@ func (s *knowledgeService) executeKnowledgeDelete(plan *knowledgeDeletePlan, sin
 	ctx, ids, knowledgeList := plan.ctx, plan.ids, plan.knowledge
 	knowledgeBases, kbFileServices := plan.kbs, plan.files
 	tenantInfo, _ := types.TenantInfoFromContext(ctx)
+	if types.UserSpacesEnabled() {
+		policy, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		if e = policy.PreserveKnowledge(ctx, knowledgeList); e != nil {
+			return e
+		}
+	}
 
 	// Mark all as deleting first to prevent async task conflicts.
 	// Remember which entries still had queued / in-flight downstream tasks
@@ -624,23 +644,25 @@ func (s *knowledgeService) executeKnowledgeDelete(plan *knowledgeDeletePlan, sin
 	}
 
 	storageAdjust := int64(0)
-	for _, knowledge := range knowledgeList {
-		if knowledge.FilePath != "" {
-			fSvc := kbFileServices[knowledge.KnowledgeBaseID]
-			if err := fSvc.DeleteFile(ctx, knowledge.FilePath); err != nil {
-				logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete file failed")
+	if !types.UserSpacesEnabled() {
+		for _, knowledge := range knowledgeList {
+			if knowledge.FilePath != "" {
+				fSvc := kbFileServices[knowledge.KnowledgeBaseID]
+				if err := fSvc.DeleteFile(ctx, knowledge.FilePath); err != nil {
+					logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete file failed")
+				}
 			}
+			storageAdjust -= knowledge.StorageSize
 		}
-		storageAdjust -= knowledge.StorageSize
-	}
-	// Delete extracted images per KB
-	for kbID, urls := range kbImageURLs {
-		fSvc := kbFileServices[kbID]
-		if fSvc == nil {
-			logger.Warnf(ctx, "No file service for KB %s, skipping %d image deletions", kbID, len(urls))
-			continue
+		// Delete extracted images per KB
+		for kbID, urls := range kbImageURLs {
+			fSvc := kbFileServices[kbID]
+			if fSvc == nil {
+				logger.Warnf(ctx, "No file service for KB %s, skipping %d image deletions", kbID, len(urls))
+				continue
+			}
+			deleteExtractedImages(ctx, fSvc, knowledgeResourceOwners(s.resourceCatalog, kbKnowledgeIDs[kbID]...), urls)
 		}
-		deleteExtractedImages(ctx, fSvc, knowledgeResourceOwners(s.resourceCatalog, kbKnowledgeIDs[kbID]...), urls)
 	}
 	// TenantInfo can be shared by concurrent cleanup branches; update only storage accounting in the repository.
 	if err := s.tenantRepo.AdjustStorageUsed(ctx, tenantInfo.ID, storageAdjust); err != nil {
@@ -824,4 +846,10 @@ func (s *knowledgeService) ProcessKnowledgeListDelete(ctx context.Context, t *as
 
 	logger.Infof(ctx, "Successfully deleted %d knowledge items", len(payload.KnowledgeIDs))
 	return nil
+}
+
+func (s *knowledgeService) PurgeRetainedFile(ctx context.Context, kb *types.KnowledgeBase, path string) error {
+	ctx = types.WithExecutionTenant(ctx, kb.TenantID)
+	svc := s.resolveFileServiceForPath(ctx, kb, path)
+	return svc.DeleteFile(ctx, path)
 }

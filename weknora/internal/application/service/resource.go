@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -318,6 +319,20 @@ func (s *resourceCatalog) CreateAccessGrant(ctx context.Context, reference strin
 	if err != nil {
 		return "", err
 	}
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return "", e
+		}
+		token, e := randomResourceToken()
+		if e != nil {
+			return "", e
+		}
+		if e = p.IssueResourceLink(ctx, resource, resourceLocationHash(token), ttl); e != nil {
+			return "", e
+		}
+		return token, nil
+	}
 	if ttl <= 0 {
 		ttl = defaultResourceGrantTTL
 	}
@@ -449,6 +464,13 @@ func isUniqueViolation(err error) bool {
 }
 
 func (s *resourceCatalog) ResolveAccessGrant(ctx context.Context, token string) (*types.StoredResource, error) {
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		return p.ResolveResourceLink(ctx, resourceLocationHash(strings.TrimSpace(token)))
+	}
 	grant, err := s.repo.GetValidGrant(ctx, resourceLocationHash(strings.TrimSpace(token)), time.Now().UTC())
 	if err != nil {
 		return nil, err

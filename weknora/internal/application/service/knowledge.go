@@ -18,6 +18,7 @@ import (
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -613,6 +614,9 @@ func (s *knowledgeService) GetKnowledgeByID(ctx context.Context, id string) (*ty
 		knowledge.Tags = tags
 	}
 
+	if types.UserSpacesEnabled() {
+		knowledge.ContentRevision = spaces.KnowledgeRevision(knowledge)
+	}
 	logger.Infof(ctx, "Knowledge retrieved successfully, ID: %s, type: %s", knowledge.ID, knowledge.Type)
 	return knowledge, nil
 }

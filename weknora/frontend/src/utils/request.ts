@@ -36,6 +36,7 @@ export type WithStatus<T> = T & {
 
 const HTTP_STATUS_KEY = '$httpStatus';
 
+
 /**
  * Attach the non-enumerable `$httpStatus` property to a response payload
  * in place and return it. Primitives pass through untouched.
@@ -102,6 +103,7 @@ instance.interceptors.request.use(
       }
     }
     
+    if (config.data?.expected_revision) config.headers['X-Solex-Revision'] = config.data.expected_revision;
     config.headers["X-Request-ID"] = `${generateRandomString(12)}`;
     return config;
   },
@@ -126,6 +128,8 @@ instance.interceptors.response.use(
   (response) => {
     // 根据业务状态码处理逻辑
     const { status, data } = response;
+    const revision = response.headers['x-solex-revision'];
+    if (revision && data?.data && typeof data.data === 'object') data.data.content_revision = revision;
     if (status >= 200 && status < 300) {
       return withHttpStatus(data, status);
     } else {

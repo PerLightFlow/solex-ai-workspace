@@ -4476,6 +4476,10 @@ definitions:
     type: object
   github_com_Tencent_WeKnora_internal_types.Knowledge:
     properties:
+      content_revision:
+        description: "Revision of editable source content. Pass it as expected_revision when updating."
+        type: string
+        x-agent: true
       channel:
         description: Channel indicates through which channel the knowledge was ingested
           (web, api, browser_extension, wechat, etc.)
@@ -5583,6 +5587,10 @@ definitions:
     - MCPTransportStdio
   github_com_Tencent_WeKnora_internal_types.ManualKnowledgePayload:
     properties:
+      expected_revision:
+        description: "Current content_revision from knowledge.get; required on updates in user-space mode. A stale revision returns HTTP 409."
+        type: string
+        x-agent: true
       channel:
         type: string
       content:
@@ -13360,6 +13368,10 @@ definitions:
     type: object
   internal_handler.UpdateKnowledgeRequest:
     properties:
+      expected_revision:
+        description: "Current content_revision from knowledge.get; required in user-space mode. Re-read and reconcile on conflict."
+        type: string
+        x-agent: true
       custom_metadata:
         type: object
       description:

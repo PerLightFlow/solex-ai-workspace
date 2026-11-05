@@ -694,6 +694,7 @@ const loadKnowledgeContent = async () => {
   contentLoading.value = true
   try {
     const res: any = await getKnowledgeDetails(currentKnowledgeId.value)
+    loadedRevision.value = res?.data?.content_revision || ''
     const data: KnowledgeDetailResponse | undefined = res?.data
     if (!data) {
       MessagePlugin.error(t('manualEditor.error.fetchDetailFailed'))
@@ -748,6 +749,7 @@ const generateDefaultTitle = () => {
   return `${t('manualEditor.defaultTitlePrefix')}-${new Date().toLocaleString()}`
 }
 
+const loadedRevision = ref('')
 const initialize = async () => {
   resetForm()
   await loadKnowledgeBases()
@@ -852,7 +854,8 @@ const handleSave = async (targetStatus: ManualStatus) => {
     let kbId = form.kbId
 
     if (mode.value === 'edit' && currentKnowledgeId.value) {
-      response = await updateManualKnowledge(currentKnowledgeId.value, payload)
+      response = await updateManualKnowledge(currentKnowledgeId.value, { ...payload, expected_revision: loadedRevision.value })
+      loadedRevision.value = (await getKnowledgeDetails(currentKnowledgeId.value))?.data?.content_revision || ''
     } else {
       response = await createManualKnowledge(form.kbId, payload)
       knowledgeID = response?.data?.id || knowledgeID

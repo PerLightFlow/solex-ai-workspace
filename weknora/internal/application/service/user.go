@@ -25,6 +25,7 @@ import (
 	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -158,6 +159,9 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 	}
 
 	provisioning := req.TenantProvisioning
+	if types.UserSpacesEnabled() {
+		provisioning = types.TenantProvisioningCreatePersonal
+	}
 	if provisioning == "" {
 		provisioning = types.TenantProvisioningCreatePersonal
 	}
@@ -733,6 +737,15 @@ func (s *userService) WithSandboxReleaser(r SandboxOwnerReleaser) { s.sandboxRel
 // still releases assignments, then deletes, then reclaims. Reclaim after the
 // row is gone is best-effort.
 func (s *userService) DeleteUser(ctx context.Context, id string) error {
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		if e = p.RequireAccountDeletionReady(ctx, id); e != nil {
+			return e
+		}
+	}
 	if s.sandboxReleaser != nil {
 		if retiring, ok := s.userRepo.(interface {
 			DeleteUserRetiringSessions(context.Context, string, time.Time) error
@@ -976,6 +989,9 @@ func (s *userService) GenerateTokens(
 func (s *userService) resolveLoginTenantID(ctx context.Context, user *types.User) uint64 {
 	if user == nil {
 		return 0
+	}
+	if types.UserSpacesEnabled() {
+		return user.TenantID
 	}
 	pref := user.Preferences.LastActiveTenantID
 	if pref == nil || *pref == 0 || *pref == user.TenantID {
@@ -1230,6 +1246,9 @@ func (s *userService) SwitchTenant(
 	targetTenantID uint64,
 	currentRefreshToken string,
 ) (*types.LoginResponse, error) {
+	if types.UserSpacesEnabled() && user != nil && targetTenantID != user.TenantID {
+		return nil, spaces.ErrForbidden
+	}
 	if user == nil {
 		return nil, errors.New("user is required")
 	}

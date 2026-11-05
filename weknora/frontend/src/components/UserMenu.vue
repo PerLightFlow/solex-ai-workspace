@@ -201,6 +201,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 import { useManagedRuntime } from '@/composables/useManagedRuntime'
 
 import { ref, computed, onMounted, onUnmounted } from 'vue'
@@ -223,6 +224,7 @@ import { getRootZoom, rectToCssPx, cssViewportSize } from '@/utils/zoom'
 import { openNewUserGuide } from '@/config/contextualGuides'
 import { SETTINGS_MANAGEMENT_SHORTCUT_MIN_ROLE } from '@/config/settingsAccess'
 const { managed: managedRuntime } = useManagedRuntime()
+const spaceCapabilities = useDeploymentCapabilitiesStore()
 const { t } = useI18n()
 
 const router = useRouter()
@@ -235,6 +237,7 @@ const { homeTenantId, isHomeTenantActive, isHomeTenant } = useHomeTenant()
 // activeTenantName 优先用切换器选中的名字（含 fallback 到 home tenant 名字），
 // 单空间用户也能正常显示自己的 home tenant 名。
 const activeTenantName = computed(() => {
+  if (spaceCapabilities.userSpaces) return "我的个人空间"
   return (
     authStore.selectedTenantName ||
     authStore.tenant?.name ||
@@ -256,7 +259,7 @@ const showTenantIdentityLine = computed(() => {
 // 快捷入口使用“管理能力”而不是页面最低可见角色：成员名册和模型列表允许
 // viewer 浏览，但头像菜单里的“管理”入口只服务实际能执行管理操作的角色。
 const canManageMembers = computed(() =>
-  authStore.canAccessAllTenants || authStore.hasRole(SETTINGS_MANAGEMENT_SHORTCUT_MIN_ROLE.members),
+  !spaceCapabilities.userSpaces && (authStore.canAccessAllTenants || authStore.hasRole(SETTINGS_MANAGEMENT_SHORTCUT_MIN_ROLE.members)),
 )
 const canManageModels = computed(() =>
   !managedRuntime.value && (authStore.canAccessAllTenants ||
@@ -374,7 +377,7 @@ const switchableMemberships = computed<Membership[]>(() => {
 // TenantSelector for the "any tenant in the system" case, so we don't
 // double-show that here.
 const showTenantSwitcher = computed(() => {
-  return switchableMemberships.value.length >= 1
+  return !spaceCapabilities.userSpaces && switchableMemberships.value.length >= 1
 })
 
 const isCurrentTenant = (id: number) => {

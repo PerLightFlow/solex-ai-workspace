@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrCustomAgentNotFound is returned when a custom agent is not found
@@ -24,6 +26,14 @@ func NewCustomAgentRepository(db *gorm.DB) interfaces.CustomAgentRepository {
 
 // CreateAgent creates a new custom agent
 func (r *customAgentRepository) CreateAgent(ctx context.Context, agent *types.CustomAgent) error {
+	if types.UserSpacesEnabled() && types.CallerFromContext(ctx).UserID != "" && !agent.IsBuiltin {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if e := tx.Create(agent).Error; e != nil {
+				return e
+			}
+			return spaces.New(tx).RegisterCreated(ctx, "agent", agent.ID, agent.TenantID)
+		})
+	}
 	return r.db.WithContext(ctx).Create(agent).Error
 }
 
@@ -53,6 +63,22 @@ func (r *customAgentRepository) ListAgentsByTenantID(ctx context.Context, tenant
 
 // UpdateAgent updates an agent
 func (r *customAgentRepository) UpdateAgent(ctx context.Context, agent *types.CustomAgent) error {
+	if types.UserSpacesEnabled() && !agent.IsBuiltin && types.CallerFromContext(ctx).UserID != "" {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var live types.CustomAgent
+			if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&live, "id=? AND tenant_id=?", agent.ID, agent.TenantID).Error; e != nil {
+				return e
+			}
+			policy := spaces.New(tx)
+			if e := policy.Require(ctx, "agent", live.ID, live.TenantID, "edit"); e != nil {
+				return e
+			}
+			if e := policy.ValidateAgentUpdate(ctx, &live, agent.Config); e != nil {
+				return e
+			}
+			return tx.Save(agent).Error
+		})
+	}
 	return r.db.WithContext(ctx).Save(agent).Error
 }
 

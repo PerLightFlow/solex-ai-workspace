@@ -16,6 +16,8 @@ import { permissionCanEditKB, permissionCanManageKB } from '@/utils/kbPermission
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue';
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities';
+const deployment = useDeploymentCapabilitiesStore();
 const uiStore = useUIStore();
 const orgStore = useOrganizationStore();
 const authStore = useAuthStore();
@@ -2499,6 +2501,7 @@ const handleKBEditorSuccess = (kbIdValue: string) => {
             </h2>
             <!-- 标题行右侧的动作锚点：聚拢"信息"和"设置"两个圆形按钮。 -->
             <div class="kb-title-actions">
+              <t-button v-if="deployment.userSpaces" size="small" variant="text" @click="router.push(`/platform/knowledge-bases/${kbId}/history`)">版本与回收站</t-button>
               <KBInfoPopover v-if="kbInfo && !authStore.isLiteMode" :kb-info="kbInfo"
                 :supported-file-types="[...supportedFileTypes]" />
               <t-tooltip v-if="canManage" :content="$t('knowledgeBase.settings')" placement="top">

@@ -124,6 +124,9 @@ func resolveDefaultTenantMode(
 	configInfo *config.Config,
 	systemSettingSvc interfaces.SystemSettingService,
 ) types.TenantProvisioningMode {
+	if types.UserSpacesEnabled() {
+		return types.TenantProvisioningCreatePersonal
+	}
 	def := config.AuthDefaultTenantModeCreatePersonal
 	if configInfo != nil && configInfo.Auth != nil {
 		if mode := strings.TrimSpace(configInfo.Auth.DefaultTenantMode); mode != "" {

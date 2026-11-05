@@ -181,7 +181,7 @@
         </div>
 
         <!-- 成员管理 (#1303 PR 3) -->
-        <div v-if="currentSection === 'members'" class="section">
+        <div v-if="currentSection === 'members' && !deploymentCapabilities.userSpaces" class="section">
           <TenantMembers />
         </div>
 
@@ -396,7 +396,7 @@ const navItems = computed(() => {
   if (!authStore.currentTenantRole && !authStore.canAccessAllTenants) {
     return [] as NavItem[]
   }
-  return all.filter((it) => canSeeSection(it.key) && isSectionSupported(it.key))
+  return all.filter((it) => !(deploymentCapabilities.userSpaces && it.key === "members") && canSeeSection(it.key) && isSectionSupported(it.key))
 })
 
 const navGroups = computed<NavGroup[]>(() => {

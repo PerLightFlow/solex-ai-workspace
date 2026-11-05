@@ -31,6 +31,7 @@ import (
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/runtime"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/robfig/cron/v3"
@@ -41,9 +42,10 @@ import (
 
 // HousekeepingService runs background sweeps to recover stuck rows.
 type HousekeepingService struct {
-	db   *gorm.DB
-	cfg  *config.Config
-	cron *cron.Cron
+	retainedFileCleaner func(context.Context, *types.KnowledgeBase, string) error
+	db                  *gorm.DB
+	cfg                 *config.Config
+	cron                *cron.Cron
 
 	// inspector lets the sweep distinguish a genuinely orphaned row from
 	// one whose enrichment subtasks are merely backlogged behind a busy
@@ -126,6 +128,17 @@ func (h *HousekeepingService) Start(ctx context.Context) error {
 		h.runSweep(context.Background())
 	}); err != nil {
 		return err
+	}
+	if types.UserSpacesEnabled() {
+		if _, err := h.cron.AddFunc("0 */30 * * * *", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+			defer cancel()
+			if e := spaces.New(h.db).SweepRetention(ctx, h.retainedFileCleaner); e != nil {
+				logger.Warnf(ctx, "Content retention sweep deferred: %v", e)
+			}
+		}); err != nil {
+			return err
+		}
 	}
 	h.cron.Start()
 	h.started = true
@@ -929,4 +942,8 @@ func housekeepingEnabled() bool {
 		return false
 	}
 	return true
+}
+
+func (h *HousekeepingService) SetRetainedFileCleaner(fn func(context.Context, *types.KnowledgeBase, string) error) {
+	h.retainedFileCleaner = fn
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -167,6 +168,19 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 		}
 	}
 
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		a, e := p.Agent(ctx, id, tenantID)
+		if e != nil {
+			return nil, e
+		}
+		a.EnsureDefaults()
+		normalizeManagedAgentModels(ctx, &a.Config)
+		return a, nil
+	}
 	// Query from database
 	agent, err := s.repo.GetAgentByID(ctx, id, tenantID)
 	if err != nil {
@@ -186,6 +200,20 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 
 // GetAgentByIDAndTenant retrieves an agent by ID and tenant (for shared agents; does not resolve built-in)
 func (s *customAgentService) GetAgentByIDAndTenant(ctx context.Context, id string, tenantID uint64) (*types.CustomAgent, error) {
+	if types.UserSpacesEnabled() && !types.IsBuiltinAgentID(id) {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		a, e := p.Agent(ctx, id, tenantID)
+		if e != nil {
+			return nil, e
+		}
+		a.EnsureDefaults()
+		normalizeManagedAgentModels(ctx, &a.Config)
+		return a, nil
+	}
+
 	if s.systemBuiltinCatalog() != nil && types.IsSystemBuiltinAgentID(id) {
 		return s.resolveSystemBuiltinAgent(ctx, id)
 	}
@@ -221,6 +249,27 @@ func (s *customAgentService) ListAgents(ctx context.Context) ([]*types.CustomAge
 		return nil, err
 	}
 
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		filtered := make([]*types.CustomAgent, 0, len(allAgents))
+		for _, a := range allAgents {
+			if types.IsBuiltinAgentID(a.ID) {
+				filtered = append(filtered, a)
+				continue
+			}
+			permission, err := p.Check(ctx, "agent", a.ID, a.TenantID)
+			if err != nil {
+				return nil, err
+			}
+			if permission.Read && p.IsPersonalOwner(ctx, "agent", a.ID, a.TenantID) {
+				filtered = append(filtered, a)
+			}
+		}
+		allAgents = filtered
+	}
 	// Track which built-in agents exist in database
 	if s.systemBuiltinCatalog() != nil {
 		result, err := s.listSystemBuiltinAgents(ctx, false)
@@ -318,6 +367,19 @@ func (s *customAgentService) UpdateAgent(
 		return nil, err
 	}
 
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		a, e := p.Check(ctx, "agent", agent.ID, tenantID)
+		if e != nil || !a.Edit {
+			return nil, spaces.ErrForbidden
+		}
+		if e = p.ValidateAgentUpdate(ctx, existingAgent, agent.Config); e != nil {
+			return nil, e
+		}
+	}
 	// Cannot modify built-in status
 	if existingAgent.IsBuiltin {
 		return nil, ErrCannotModifyBuiltin
@@ -503,6 +565,16 @@ func (s *customAgentService) DeleteAgent(ctx context.Context, id string) error {
 		return ErrCannotDeleteBuiltin
 	}
 
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		a, e := p.Check(ctx, "agent", id, tenantID)
+		if e != nil || !a.Manage {
+			return spaces.ErrForbidden
+		}
+	}
 	logger.Infof(ctx, "Deleting custom agent, ID: %s", id)
 
 	if err := s.repo.DeleteAgent(ctx, id, tenantID); err != nil {
@@ -533,6 +605,16 @@ func (s *customAgentService) CopyAgent(ctx context.Context, id string) (*types.C
 	sourceAgent, err := s.GetAgentByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	if types.UserSpacesEnabled() && !sourceAgent.IsBuiltin {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		if e = p.Require(ctx, "agent", sourceAgent.ID, sourceAgent.TenantID, "manage"); e != nil {
+			return nil, e
+		}
 	}
 
 	// Create a new agent with copied data

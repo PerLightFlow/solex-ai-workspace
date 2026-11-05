@@ -29774,6 +29774,11 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.Knowledge": {
             "type": "object",
             "properties": {
+                "content_revision": {
+                    "description": "Revision of editable source content. Pass it as expected_revision when updating.",
+                    "type": "string",
+                    "x-agent": true
+                },
                 "channel": {
                     "description": "Channel indicates through which channel the knowledge was ingested (web, api, browser_extension, wechat, etc.)",
                     "type": "string",
@@ -31191,6 +31196,11 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.ManualKnowledgePayload": {
             "type": "object",
             "properties": {
+                "expected_revision": {
+                    "description": "Current content_revision from knowledge.get; required on updates in user-space mode. A stale revision returns HTTP 409.",
+                    "type": "string",
+                    "x-agent": true
+                },
                 "channel": {
                     "type": "string"
                 },
@@ -41262,6 +41272,11 @@ const docTemplate = `{
         "internal_handler.UpdateKnowledgeRequest": {
             "type": "object",
             "properties": {
+                "expected_revision": {
+                    "description": "Current content_revision from knowledge.get; required in user-space mode. Re-read and reconcile on conflict.",
+                    "type": "string",
+                    "x-agent": true
+                },
                 "custom_metadata": {
                     "type": "object"
                 },

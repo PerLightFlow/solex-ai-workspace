@@ -8,6 +8,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -283,6 +284,14 @@ func (s *kbShareService) ListSharesByOrganization(ctx context.Context, orgID str
 // caller's tenant via cross-tenant org shares. Permission per KB is
 // computed via the 3-D cap.
 func (s *kbShareService) ListSharedKnowledgeBases(ctx context.Context, tenantID uint64, callerTenantRole types.TenantRole) ([]*types.SharedKnowledgeBaseInfo, error) {
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		return p.SharedKnowledgeBases(ctx)
+	}
+
 	shares, err := s.shareRepo.ListSharedKBsForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -479,6 +488,25 @@ func (s *kbShareService) GetShareByKBAndOrg(ctx context.Context, kbID string, or
 // where the caller's tenant is a member, capped by the 3-D rule. Empty
 // when isShared is false.
 func (s *kbShareService) CheckTenantKBPermission(ctx context.Context, kbID string, callerTenantID uint64, callerTenantRole types.TenantRole) (types.OrgMemberRole, bool, error) {
+	if types.UserSpacesEnabled() {
+		p, err := spaces.Current()
+		if err != nil {
+			return "", false, err
+		}
+		kb, err := s.kbRepo.GetKnowledgeBaseByID(ctx, kbID)
+		if err != nil {
+			return "", false, err
+		}
+		a, err := p.Check(ctx, "knowledge_base", kbID, kb.TenantID)
+		if err != nil || !a.Read {
+			return "", false, err
+		}
+		if a.Edit {
+			return types.OrgRoleEditor, true, nil
+		}
+		return types.OrgRoleViewer, true, nil
+	}
+
 	shares, err := s.shareRepo.ListByKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return "", false, err

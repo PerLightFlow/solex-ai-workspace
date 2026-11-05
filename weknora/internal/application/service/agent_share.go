@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -326,6 +327,18 @@ func (s *agentShareService) ListSharesByOrganization(ctx context.Context, orgID 
 
 // ListSharedAgents lists agents reachable from the caller's tenant.
 func (s *agentShareService) ListSharedAgents(ctx context.Context, tenantID uint64, callerTenantRole types.TenantRole) ([]*types.SharedAgentInfo, error) {
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return nil, e
+		}
+		items, err := p.SharedAgents(ctx)
+		for _, item := range items {
+			item.Agent = receiverAgentView(item.Agent)
+		}
+		return items, err
+	}
+
 	shares, err := s.shareRepo.ListSharedAgentsForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -517,6 +530,16 @@ func (s *agentShareService) GetSharedAgentForTenant(
 	agentID string,
 	sourceTenantID ...uint64,
 ) (*types.CustomAgent, error) {
+	if types.UserSpacesEnabled() {
+		policy, err := spaces.Current()
+		if err != nil {
+			return nil, err
+		}
+		if len(sourceTenantID) == 0 || sourceTenantID[0] == 0 {
+			return policy.FindAgent(ctx, agentID)
+		}
+		return policy.Agent(ctx, agentID, sourceTenantID[0])
+	}
 	if agentID == "" || types.IsBuiltinAgentID(agentID) {
 		return nil, ErrAgentShareNotFound
 	}
@@ -565,6 +588,10 @@ func (s *agentShareService) GetSharedAgentForTenant(
 // at least one shared agent that can access the given KB (used when opening KB
 // detail from "通过智能体可见" list without agent_id).
 func (s *agentShareService) TenantCanAccessKBViaSomeSharedAgent(ctx context.Context, tenantID uint64, callerTenantRole types.TenantRole, kb *types.KnowledgeBase) (bool, error) {
+	if types.UserSpacesEnabled() {
+		return false, nil
+	} // Agent use never creates a KB grant.
+
 	if kb == nil || kb.ID == "" {
 		return false, nil
 	}

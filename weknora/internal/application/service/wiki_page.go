@@ -16,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/common"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -223,7 +224,7 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 
 	// Snapshot user-visible fields BEFORE mutation so we can decide whether
 	// this is a real content change or just bookkeeping.
-	contentChanged := existing.Title != page.Title ||
+	contentChanged := types.IsContentRestore(ctx) || existing.Title != page.Title ||
 		existing.Content != page.Content ||
 		existing.Summary != page.Summary ||
 		existing.PageType != page.PageType ||
@@ -354,6 +355,14 @@ func revisionFromPage(p *types.WikiPage) *types.WikiPageRevision {
 // of the recent window; human/agent/revert ones survive until the hard cap,
 // so pipeline churn on a hot page cannot evict the edits users care about.
 func (s *wikiPageService) pruneRevisions(ctx context.Context, pageID string, currentVersion int) {
+	if types.UserSpacesEnabled() {
+		if p, e := spaces.Current(); e == nil {
+			if e = p.PruneWiki(ctx, pageID); e != nil {
+				logger.Warnf(ctx, "Prune wiki history failed: %v", e)
+			}
+		}
+		return
+	}
 	req := types.WikiRevisionPruneRequest{
 		PageID:              pageID,
 		KeepFromVersion:     currentVersion - types.WikiMaxRevisionsPerPage,
@@ -495,6 +504,15 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 		return err
 	}
 
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		if e = p.PreserveWiki(ctx, page); e != nil {
+			return e
+		}
+	}
 	// Remove inbound link references from pages this page links to
 	s.removeInLinks(ctx, kbID, slug, page.OutLinks)
 
@@ -506,7 +524,12 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 	// Drop the snapshot history too: the page is gone from every read path,
 	// so its revisions are unreachable rows holding full content bodies.
 	// Best-effort — the page is already deleted and cannot be rolled back.
-	if err := s.repo.DeleteRevisionsByPage(ctx, page.ID); err != nil {
+	if err := func() error {
+		if types.UserSpacesEnabled() {
+			return nil
+		}
+		return s.repo.DeleteRevisionsByPage(ctx, page.ID)
+	}(); err != nil {
 		logger.Warnf(ctx, "delete wiki page revisions for %s failed: %v", page.ID, err)
 	}
 

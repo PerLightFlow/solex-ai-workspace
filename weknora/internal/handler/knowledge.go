@@ -19,6 +19,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/filetransport"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -667,6 +668,9 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 		return
 	}
 
+	if types.UserSpacesEnabled() {
+		knowledge.ContentRevision = spaces.KnowledgeRevision(knowledge)
+	}
 	logger.Infof(ctx, "Knowledge retrieved successfully, ID: %s, title: %s",
 		secutils.SanitizeForLog(knowledge.ID), secutils.SanitizeForLog(knowledge.Title))
 	c.JSON(http.StatusOK, gin.H{
@@ -2061,7 +2065,12 @@ func (h *KnowledgeHandler) DownloadKnowledgeFile(c *gin.Context) {
 	// Keep a handler-level Editor check in addition to the route guard. The
 	// original file is more sensitive than parsed-content reads and must not
 	// be downloadable through a read-only organization share.
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, func() types.OrgMemberRole {
+		if types.UserSpacesEnabled() {
+			return types.OrgRoleViewer
+		}
+		return types.OrgRoleEditor
+	}())
 	if err != nil {
 		c.Error(err)
 		return
@@ -2211,9 +2220,12 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 
 		knowledges, err = h.kgService.GetKnowledgeBatch(ctx, effectiveTenantID, req.IDs)
 	} else if agentScope != nil {
-		// Keep the authorized agent's read scope and the original caller.
-		ctx = types.WithExecutionTenant(ctx, effectiveTenantID)
-		knowledges, err = h.kgService.GetKnowledgeBatch(ctx, effectiveTenantID, req.IDs)
+		if types.UserSpacesEnabled() {
+			knowledges, err = h.kgService.GetKnowledgeBatchWithSharedAccess(ctx, types.CallerFromContext(ctx).TenantID, req.IDs)
+		} else {
+			ctx = types.WithExecutionTenant(ctx, effectiveTenantID)
+			knowledges, err = h.kgService.GetKnowledgeBatch(ctx, effectiveTenantID, req.IDs)
+		}
 	} else {
 		knowledges, err = h.kgService.GetKnowledgeBatchWithSharedAccess(ctx, effectiveTenantID, req.IDs)
 	}
@@ -2347,6 +2359,7 @@ func latestActivity(times ...time.Time) time.Time {
 // UpdateKnowledgeRequest defines the partial-update body for PUT /knowledge/:id.
 // Omitted fields are left unchanged; an explicit empty description clears the summary.
 type UpdateKnowledgeRequest struct {
+	ExpectedRevision string `json:"expected_revision,omitempty" extensions:"x-agent"`
 	// New title; omit to keep it.
 	Title *string `json:"title" extensions:"x-agent"`
 	// New summary; omit to keep it, empty clears it.
@@ -2367,7 +2380,7 @@ type UpdateKnowledgeRequest struct {
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @x-agent      {"id":"knowledge.update","risk":"write","target":"knowledge.get","label":"title"}
-// @x-agent-hint "Sets a document's title or summary; a field left out is kept."
+// @x-agent-hint "Read knowledge.get first; pass its content_revision as expected_revision. Sets title or summary; omitted fields stay unchanged. Re-read and reconcile on conflict."
 // @Router       /knowledge/{id} [put]
 func (h *KnowledgeHandler) UpdateKnowledge(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -2391,6 +2404,13 @@ func (h *KnowledgeHandler) UpdateKnowledge(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	if req.ExpectedRevision != "" {
+		effCtx = types.WithExpectedContentVersion(effCtx, req.ExpectedRevision)
+	}
+	if types.UserSpacesEnabled() && types.ExpectedContentVersion(effCtx) == "" {
+		c.AbortWithStatusJSON(428, gin.H{"message": "请先读取文档，再提交 expected_revision"})
+		return
+	}
 	knowledge := types.Knowledge{ID: id, CustomMetadata: types.JSON(req.CustomMetadata)}
 	if req.Title != nil {
 		knowledge.Title = *req.Title
@@ -2401,6 +2421,10 @@ func (h *KnowledgeHandler) UpdateKnowledge(c *gin.Context) {
 	}
 
 	if err := h.kgService.UpdateKnowledge(effCtx, &knowledge); err != nil {
+		if goerrors.Is(err, spaces.ErrConflict) || goerrors.Is(err, spaces.ErrForbidden) {
+			spaceResponse(c, nil, err)
+			return
+		}
 		logger.ErrorWithFields(ctx, err, nil)
 		var appErr *errors.AppError
 		if goerrors.As(err, &appErr) {
@@ -2507,8 +2531,19 @@ func (h *KnowledgeHandler) UpdateManualKnowledge(c *gin.Context) {
 		return
 	}
 
+	if req.ExpectedRevision != "" {
+		effCtx = types.WithExpectedContentVersion(effCtx, req.ExpectedRevision)
+	}
+	if types.UserSpacesEnabled() && types.ExpectedContentVersion(effCtx) == "" {
+		c.AbortWithStatusJSON(428, gin.H{"message": "请先读取文档，再提交 expected_revision"})
+		return
+	}
 	knowledge, err := h.kgService.UpdateManualKnowledge(effCtx, id, &req)
 	if err != nil {
+		if goerrors.Is(err, spaces.ErrConflict) || goerrors.Is(err, spaces.ErrForbidden) {
+			spaceResponse(c, nil, err)
+			return
+		}
 		if appErr, ok := errors.IsAppError(err); ok {
 			c.Error(appErr)
 			return
@@ -2936,7 +2971,16 @@ func (h *KnowledgeHandler) SearchKnowledge(c *gin.Context) {
 		if !scope.IsAll() {
 			for _, kbID := range scope.IDs() {
 				if kbID != "" {
-					scopes = append(scopes, types.KnowledgeSearchScope{TenantID: sourceTenantID, KBID: kbID})
+					kbTenant := sourceTenantID
+					if types.UserSpacesEnabled() {
+						kb, e := h.kbService.GetKnowledgeBaseByIDOnly(ctx, kbID)
+						if e != nil {
+							c.Error(errors.NewForbiddenError("知识库授权已失效"))
+							return
+						}
+						kbTenant = kb.TenantID
+					}
+					scopes = append(scopes, types.KnowledgeSearchScope{TenantID: kbTenant, KBID: kbID})
 				}
 			}
 		}

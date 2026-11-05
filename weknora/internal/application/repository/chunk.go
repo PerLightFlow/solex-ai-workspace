@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/common"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -484,7 +485,20 @@ func (r *chunkRepository) SaveChunkRevision(
 		if result.RowsAffected != 1 {
 			return ErrChunkRevisionConflict
 		}
-		return tx.Create(revision).Error
+		if e := tx.Create(revision).Error; e != nil {
+			return e
+		}
+		if types.UserSpacesEnabled() {
+			var obsolete []string
+			limit := spaces.New(tx).Retention(ctx).ManualVersions
+			if e := tx.Model(&types.ChunkRevision{}).Where("chunk_id=? AND tenant_id=?", chunk.ID, chunk.TenantID).Order("revision DESC").Offset(limit).Pluck("id", &obsolete).Error; e != nil {
+				return e
+			}
+			if len(obsolete) > 0 {
+				return tx.Delete(&types.ChunkRevision{}, "id IN ?", obsolete).Error
+			}
+		}
+		return nil
 	})
 }
 
@@ -495,6 +509,19 @@ func (r *chunkRepository) ListChunkRevisions(
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND chunk_id = ?", tenantID, chunkID).
 		Order("revision DESC").Find(&revisions).Error
+	if err == nil && types.UserSpacesEnabled() {
+		filtered := revisions[:0]
+		for _, v := range revisions {
+			cutoff, e := spaces.New(r.db).HistoryCutoff(ctx, v.KnowledgeBaseID)
+			if e != nil {
+				return nil, e
+			}
+			if cutoff.IsZero() || !v.CreatedAt.Before(cutoff) {
+				filtered = append(filtered, v)
+			}
+		}
+		revisions = filtered
+	}
 	return revisions, err
 }
 
@@ -505,6 +532,15 @@ func (r *chunkRepository) GetChunkRevision(
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND chunk_id = ? AND revision = ?", tenantID, chunkID, revision).
 		First(&item).Error
+	if err == nil && types.UserSpacesEnabled() {
+		cutoff, e := spaces.New(r.db).HistoryCutoff(ctx, item.KnowledgeBaseID)
+		if e != nil {
+			return nil, e
+		}
+		if !cutoff.IsZero() && item.CreatedAt.Before(cutoff) {
+			return nil, spaces.ErrForbidden
+		}
+	}
 	return &item, err
 }
 

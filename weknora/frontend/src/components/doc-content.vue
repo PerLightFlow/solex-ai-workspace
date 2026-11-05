@@ -63,10 +63,12 @@ const metadataSaving = ref(false);
 const summaryRefreshing = ref(false);
 const summaryEditing = ref(false);
 const summaryDraft = ref('');
+const summaryRevision = ref(''), metadataRevision = ref('');
 const summarySaving = ref(false);
 
 const startSummaryEdit = () => {
   summaryDraft.value = props.details?.description || '';
+  summaryRevision.value = props.details?.content_revision || '';
   summaryEditing.value = true;
 };
 
@@ -79,10 +81,11 @@ const saveSummary = async () => {
   summarySaving.value = true;
   try {
     const description = summaryDraft.value.trim();
-    const result: any = await updateKnowledgeSummary(props.details.id, description);
+    const result: any = await updateKnowledgeSummary(props.details.id, description, summaryRevision.value);
     applySummaryState(result?.data?.summary_status, result?.data?.description ?? description);
     summaryEditing.value = false;
     void refreshDocumentAttribution();
+    getKnowledgeDetails(props.details.id).then((r: any) => { props.details.content_revision = r?.data?.content_revision || ''; });
     MessagePlugin.success(t('common.saveSuccess'));
   } catch (error: any) {
     MessagePlugin.error(error?.message || t('common.saveFailed'));
@@ -119,6 +122,7 @@ const syncMetadataDraft = () => {
 const startMetadataEdit = () => {
   syncMetadataDraft();
   if (!metadataDraft.value.length) metadataDraft.value.push(makeMetadataRow());
+  metadataRevision.value = props.details?.content_revision || '';
   metadataEditing.value = true;
 };
 
@@ -162,10 +166,11 @@ const saveMetadata = async () => {
       value[key] = parseMetadataValue(row);
     }
     metadataSaving.value = true;
-    const result: any = await updateKnowledgeMetadata(props.details.id, value);
+    const result: any = await updateKnowledgeMetadata(props.details.id, value, metadataRevision.value);
     props.details.custom_metadata = value;
     metadataEditing.value = false;
     void refreshDocumentAttribution();
+    getKnowledgeDetails(props.details.id).then((r: any) => { props.details.content_revision = r?.data?.content_revision || ''; });
     if (result?.data) {
       applySummaryState(result.data.summary_status, result.data.description);
     }
@@ -1212,6 +1217,7 @@ const saveChunkEdit = async (item: any) => {
     notifyChunkMutationOutcome(item, result, t('common.saveSuccess'));
     void refreshChunkHistoryAfterMutation(item);
     void refreshDocumentAttribution();
+    getKnowledgeDetails(props.details.id).then((r: any) => { props.details.content_revision = r?.data?.content_revision || ''; });
   } catch (error: any) {
     handleChunkEditError(error, t('common.saveFailed'));
   } finally {
@@ -1229,6 +1235,7 @@ const toggleChunkEnabled = async (item: any, isEnabled: boolean) => {
     notifyChunkMutationOutcome(item, result);
     void refreshChunkHistoryAfterMutation(item);
     void refreshDocumentAttribution();
+    getKnowledgeDetails(props.details.id).then((r: any) => { props.details.content_revision = r?.data?.content_revision || ''; });
   } catch (error: any) {
     handleChunkEditError(error, t('common.error'));
   } finally {
@@ -1353,6 +1360,7 @@ const revertChunk = async (item: any, revision: number) => {
     notifyChunkMutationOutcome(item, result, t('knowledgeBase.chunkReverted'));
     await refreshChunkHistoryAfterMutation(item);
     void refreshDocumentAttribution();
+    getKnowledgeDetails(props.details.id).then((r: any) => { props.details.content_revision = r?.data?.content_revision || ''; });
   } catch (error: any) {
     handleChunkEditError(error, t('common.error'));
   } finally {

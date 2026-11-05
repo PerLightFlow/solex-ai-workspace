@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -116,6 +117,24 @@ func RequireKBTransfer(ctx context.Context, source, target *types.KnowledgeBase,
 	}
 	if grant.source != source.ID || grant.target != target.ID {
 		return ErrForbidden
+	}
+	if types.UserSpacesEnabled() && types.CallerFromContext(ctx).UserID != "" {
+		p, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		permission := "edit"
+		if operation == KBTransferClone {
+			permission = "manage"
+		}
+		if e = p.Require(ctx, "knowledge_base", source.ID, source.TenantID, permission); e != nil {
+			return e
+		}
+		if !grant.create {
+			if e = p.Require(ctx, "knowledge_base", target.ID, target.TenantID, "edit"); e != nil {
+				return e
+			}
+		}
 	}
 	return transferAPIScope(ctx, source.ID, target.ID, operation, grant.create)
 }

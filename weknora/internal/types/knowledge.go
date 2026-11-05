@@ -165,6 +165,7 @@ func (order KnowledgeListSortOrder) Valid() bool {
 // It contains metadata about the knowledge source, its processing status,
 // and references to the physical file if applicable.
 type Knowledge struct {
+	ContentRevision string `json:"content_revision,omitempty" gorm:"-" extensions:"x-agent"`
 	// Unique identifier of the knowledge
 	ID string `json:"id"                 gorm:"type:varchar(36);primaryKey" extensions:"x-agent=knowledge_id"`
 	// Workspace ID
@@ -333,6 +334,7 @@ type ManualKnowledgeMetadata struct {
 
 // ManualKnowledgePayload represents the payload for manual knowledge operations.
 type ManualKnowledgePayload struct {
+	ExpectedRevision string `json:"expected_revision,omitempty" extensions:"x-agent"`
 	// Document title.
 	Title string `json:"title" extensions:"x-agent"`
 	// Markdown content. The assistant may send a full document; the API limit

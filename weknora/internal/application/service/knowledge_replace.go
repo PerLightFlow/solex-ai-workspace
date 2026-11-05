@@ -175,6 +175,7 @@ func (s *knowledgeService) ReplaceKnowledgeFile(ctx context.Context,
 			existing.ID, err)
 	}
 
+	ctx = types.WithExpectedContentVersion(ctx, "")
 	reparsed, err := s.reparseKnowledge(ctx, existing.ID, nil, true)
 	if err != nil {
 		logger.Errorf(ctx, "Reparse after replacing the file of knowledge %s failed, restoring source: %v",
@@ -206,7 +207,7 @@ func (s *knowledgeService) ReplaceKnowledgeFile(ctx context.Context,
 	if refreshed, err := s.repo.GetKnowledgeByID(ctx, existing.TenantID, existing.ID); err == nil && refreshed != nil {
 		reparsed = refreshed
 	}
-	if existing.FilePath != newPath {
+	if existing.FilePath != newPath && !types.UserSpacesEnabled() {
 		oldFileSvc := s.resolveFileServiceForPath(cleanupCtx, kb, existing.FilePath)
 		if err := oldFileSvc.DeleteFile(cleanupCtx, existing.FilePath); err != nil {
 			logger.Warnf(ctx, "Failed to delete replaced file %s of knowledge %s: %v",

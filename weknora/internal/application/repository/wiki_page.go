@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -195,6 +196,15 @@ func (r *wikiPageRepository) ListRevisions(
 	base := r.db.WithContext(ctx).Model(&types.WikiPageRevision{}).
 		Where("knowledge_base_id = ? AND page_id = ?", kbID, pageID)
 
+	if types.UserSpacesEnabled() {
+		cutoff, e := spaces.New(r.db).HistoryCutoff(ctx, kbID)
+		if e != nil {
+			return nil, 0, e
+		}
+		if !cutoff.IsZero() {
+			base = base.Where("created_at>=?", cutoff)
+		}
+	}
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -224,6 +234,15 @@ func (r *wikiPageRepository) GetRevision(
 			return nil, ErrWikiPageNotFound
 		}
 		return nil, err
+	}
+	if types.UserSpacesEnabled() {
+		cutoff, e := spaces.New(r.db).HistoryCutoff(ctx, kbID)
+		if e != nil {
+			return nil, e
+		}
+		if !cutoff.IsZero() && rev.CreatedAt.Before(cutoff) {
+			return nil, spaces.ErrForbidden
+		}
 	}
 	return &rev, nil
 }

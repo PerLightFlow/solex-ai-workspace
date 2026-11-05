@@ -11,6 +11,7 @@ import {
 export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilities', () => {
   const edition = ref('')
   const managedRuntime = ref(false)
+  const userSpaces = ref(false)
   const capabilities = ref<DeploymentCapabilityMap>({})
   const loaded = ref(false)
   const loadError = ref('')
@@ -25,6 +26,7 @@ export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilitie
         const response = await getDeploymentCapabilities()
         edition.value = response.data?.edition || ''
         managedRuntime.value = response.data?.managed_runtime === true
+        userSpaces.value = response.data?.user_spaces === true
         capabilities.value = response.data?.capabilities || {}
         loadError.value = ''
       } catch (error) {
@@ -51,6 +53,7 @@ export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilitie
   return {
     edition,
     managedRuntime,
+    userSpaces,
     capabilities,
     loaded,
     loadError,

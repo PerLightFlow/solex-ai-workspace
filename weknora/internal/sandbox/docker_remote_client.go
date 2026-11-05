@@ -42,6 +42,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -593,6 +594,9 @@ func (c *DockerRemoteClient) List(
 	filter RemoteListFilter,
 ) ([]RemoteSandboxSummary, error) {
 	filters := client.Filters{}.Add("label", dockerManagedLabel+"=true")
+	if scope := strings.TrimSpace(os.Getenv("SOLEX_SANDBOX_INSTANCE")); scope != "" {
+		filters = filters.Add("label", dockerInstanceLabel+"="+scope)
+	}
 	for key, value := range filter.Metadata {
 		filters = filters.Add("label", key+"="+value)
 	}

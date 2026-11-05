@@ -116,6 +116,11 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
+          path: "knowledge-bases/:kbId/history",
+          component: () => import("../views/knowledge/KnowledgeHistory.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
           path: "knowledge-bases/:kbId",
           name: "knowledgeBaseDetail",
           component: () => import("../views/knowledge/KnowledgeBase.vue"),
@@ -194,7 +199,7 @@ const router = createRouter({
         {
           path: "organizations",
           name: "organizationList",
-          component: () => import("../views/organization/OrganizationList.vue"),
+          component: () => import("../views/organization/OrganizationRoute.vue"),
           meta: { requiresInit: true, requiresAuth: true, requiredCapability: 'organizations' }
         },
         // Compatibility redirects for /platform/system/* URLs. System

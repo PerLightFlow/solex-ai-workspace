@@ -18,6 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
 	appruntime "github.com/Tencent/WeKnora/internal/runtime"
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
@@ -114,6 +115,18 @@ func (s *sessionService) AgentQA(
 		if agentConfig.AssistantAccess == types.AssistantAccessReadOnly {
 			agentConfig.WritableKBIDs = nil
 		}
+	}
+	if types.UserSpacesEnabled() {
+		policy, e := spaces.Current()
+		if e != nil {
+			return e
+		}
+		guarded, stop, e := policy.GuardRun(ctx, req.CustomAgent, agentConfig.KnowledgeBases)
+		if e != nil {
+			return e
+		}
+		defer stop()
+		ctx = guarded
 	}
 	ctx = types.WithAccessLevel(ctx, agentConfig.AssistantAccess)
 	if _, scoped := types.GrantScopeFromContext(ctx); !scoped {

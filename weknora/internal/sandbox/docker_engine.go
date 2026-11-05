@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -435,6 +436,9 @@ func dockerContainerLabels(metadata map[string]string) map[string]string {
 		labels[key] = value
 	}
 	labels[dockerManagedLabel] = "true"
+	if scope := strings.TrimSpace(os.Getenv("SOLEX_SANDBOX_INSTANCE")); scope != "" {
+		labels[dockerInstanceLabel] = scope
+	}
 	return labels
 }
 
@@ -446,7 +450,7 @@ func dockerSandboxMetadata(labels map[string]string) map[string]string {
 	}
 	metadata := make(map[string]string, len(labels))
 	for key, value := range labels {
-		if key == dockerManagedLabel {
+		if key == dockerManagedLabel || key == dockerInstanceLabel {
 			continue
 		}
 		metadata[key] = value
@@ -458,6 +462,7 @@ func dockerSandboxMetadata(labels map[string]string) map[string]string {
 // on it so a WeKnora deployment sharing a daemon with other workloads can
 // never delete a container it does not own.
 const dockerManagedLabel = "com.weknora.sandbox.managed"
+const dockerInstanceLabel = "io.solex.sandbox.instance"
 
 // dockerContainerStartedAt parses the daemon's RFC3339Nano timestamps, which
 // are the zero value string "0001-01-01T00:00:00Z" when unset.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/spaces"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -73,6 +74,20 @@ func ResolveKBFile(
 	file, resource, err := resolveFile(ctx, catalog, reference)
 	if err != nil {
 		return empty, err
+	}
+	if types.UserSpacesEnabled() {
+		p, e := spaces.Current()
+		if e != nil {
+			return empty, ErrForbidden
+		}
+		if resource != nil {
+			e = p.AuthorizeStoredResource(ctx, resource)
+		} else {
+			e = p.Require(ctx, "knowledge_base", kbID, grant.EffectiveTenantID, "download")
+		}
+		if e != nil {
+			return empty, ErrForbidden
+		}
 	}
 	owner := grant.EffectiveTenantID
 	if owner == 0 || (resource != nil && resource.TenantID != owner) {
@@ -214,6 +229,37 @@ func AuthorizeMessageFile(ctx context.Context, message *types.Message, reference
 	if kbShares.Bindings == nil {
 		kbShares.Bindings, _ = catalog.(interfaces.KBResourceLookup)
 	}
+	if types.UserSpacesEnabled() {
+		bindings, ok := catalog.(interfaces.MessageFileBindingLookup)
+		if !ok {
+			return FileAccess{}, ErrForbidden
+		}
+		origins, e := bindings.GetMessageFileBindings(ctx, owner, reference, message.ID)
+		if e != nil || origins == nil {
+			return FileAccess{}, ErrForbidden
+		}
+		allowed := origins.MessageArtifact && owner == caller.TenantID
+		policy, e := spaces.Current()
+		if e != nil {
+			return FileAccess{}, ErrForbidden
+		}
+		if resource != nil {
+			allowed = allowed || policy.AuthorizeStoredResource(ctx, resource) == nil
+		} else {
+			for _, id := range origins.KnowledgeBaseIDs {
+				_, _, tenant, e := policy.ResourceScope(ctx, "knowledge_base", id, 0)
+				if e == nil && policy.Require(ctx, "knowledge_base", id, tenant, "download") == nil {
+					allowed = true
+				}
+			}
+		}
+
+		if !allowed {
+			return FileAccess{}, ErrForbidden
+		}
+		file.OwnerTenantID = owner
+		return file, nil
+	}
 	kbAuthorized := false
 	if resource != nil && message.AgentTenantID != 0 && message.AgentTenantID != owner {
 		kbAuthorized = kbShares.resourceAccessibleViaSharedKB(ctx, message, resource, caller.TenantID, caller.Role)
@@ -285,8 +331,8 @@ func ResolveMessageArtifact(ctx context.Context, message *types.Message, index i
 	if err != nil {
 		return FileAccess{}, err
 	}
-	if (resource != nil && resource.TenantID == caller.TenantID) ||
-		(resource == nil && secutils.ValidateStoragePathTenant(file.Path, caller.TenantID) == nil) {
+	if !types.UserSpacesEnabled() && ((resource != nil && resource.TenantID == caller.TenantID) ||
+		(resource == nil && secutils.ValidateStoragePathTenant(file.Path, caller.TenantID) == nil)) {
 		file.OwnerTenantID = caller.TenantID
 		file.Filename = artifact.FileName
 		return file, nil
