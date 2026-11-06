@@ -60,7 +60,7 @@ import { getAccountHandover, handoverResource, handoverSpace, type AccountHandov
 import { groupHandoverResources } from './accountHandover'
 
 const props = defineProps<{ user: SystemAdminUser }>()
-const emit = defineEmits<{ close: []; 'status-changed': [boolean]; announced: [string] }>()
+const emit = defineEmits<{ close: []; 'status-changed': [boolean]; 'handover-loaded': [AccountHandover]; announced: [string] }>()
 const accountActive = ref(props.user.is_active)
 const preview = ref<AccountHandover | null>(null)
 const successors = ref<SystemAdminUser[]>([])
@@ -80,6 +80,7 @@ async function load() {
   if (disposed) return
   if (result.user_id !== props.user.id) throw new Error('交接账号不匹配，请重新打开窗口')
   preview.value = result
+  emit('handover-loaded', result)
   accountActive.value = result.is_active
   emit('status-changed', result.is_active)
   for (const r of resources.value) {

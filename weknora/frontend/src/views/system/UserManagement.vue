@@ -26,6 +26,7 @@
       </div>
     </Teleport>
     <t-alert v-if="loadError" theme="error" :message="loadError" />
+    <t-alert v-if="handoverLoadError" theme="warning" message="部分账号的交接状态未能读取，请刷新列表重试。" />
     <div class="user-management__table">
       <div class="user-management__scroll">
         <t-table :aria-label="t('system.globalSettings.userList.title')" row-key="id" :data="filteredUsers" :columns="columns" :loading="loading" size="medium" hover>
@@ -89,7 +90,7 @@
                   {{ t(row.is_active ? 'system.globalSettings.userList.disable' : 'system.globalSettings.userList.enable') }}
                 </t-button>
               </t-popconfirm>
-              <t-button v-if="deploymentCapabilities.userSpaces && !row.is_active" variant="text" class="user-management__action"
+              <t-button v-if="deploymentCapabilities.userSpaces && !row.is_active && handoverPending[row.id] === true" variant="text" class="user-management__action"
                 :disabled="loading || locked" @click="openHandover(row)">交接</t-button>
             </div>
           </template>
@@ -109,7 +110,7 @@
       </div>
     </div>
     <AccountHandoverDialog v-if="handoverUser" :key="handoverUser.id" :user="handoverUser"
-      @close="handoverUser = null" @status-changed="updateHandoverStatus" @announced="announce" />
+      @close="handoverUser = null" @status-changed="updateHandoverStatus" @handover-loaded="updateHandoverSummary" @announced="announce" />
   </section>
 </template>
 
@@ -123,6 +124,7 @@ import CreateUserDialog from './CreateUserDialog.vue'
 import ResetPasswordDialog from './ResetPasswordDialog.vue'
 import AccountHandoverDialog from './AccountHandoverDialog.vue'
 import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
+import { getAccountHandover, type AccountHandover } from '@/api/spaces/handover'
 
 const props = defineProps<{ active: boolean }>()
 const emit = defineEmits<{ announced: [string] }>()
@@ -130,6 +132,8 @@ const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const deploymentCapabilities = useDeploymentCapabilitiesStore()
 const handoverUser = ref<SystemAdminUser | null>(null)
+const handoverPending = ref<Record<string, boolean>>({})
+const handoverLoadError = ref(false)
 const users = ref<SystemAdminUser[]>([])
 const loading = ref(false)
 const loadError = ref('')
@@ -171,6 +175,7 @@ async function fetchPage(nextOffset: number) {
   if (loading.value || resetBusy.value) return
   loading.value = true
   loadError.value = ''
+  handoverLoadError.value = false
   pendingRole.value = null
   statusVisibleId.value = null
   try {
@@ -178,9 +183,29 @@ async function fetchPage(nextOffset: number) {
     users.value = response.users
     hasMore.value = response.has_more
     offset.value = response.offset
+    handoverPending.value = {}
+    if (deploymentCapabilities.userSpaces) await loadHandoverSummaries(response.users)
   } catch (error) {
     loadError.value = errorMessage(error, 'system.globalSettings.userList.loadFailed')
   } finally { loading.value = false }
+}
+async function loadHandoverSummaries(rows: SystemAdminUser[]) {
+  // Only check disabled accounts on this page; bound concurrent detail reads.
+  const queue = rows.filter(row => !row.is_active)
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+    while (queue.length) {
+      const row = queue.shift()!
+      try {
+        const summary = await getAccountHandover(row.id)
+        if (summary.user_id !== row.id) throw new Error('交接账号不匹配')
+        row.is_active = summary.is_active
+        updateHandoverSummary(summary)
+      } catch { handoverLoadError.value = true }
+    }
+  }))
+}
+function updateHandoverSummary(summary: AccountHandover) {
+  handoverPending.value[summary.user_id] = summary.spaces.length > 0 || summary.resources.length > 0
 }
 function openHandover(row: SystemAdminUser) {
   if (locked.value || row.id === authStore.currentUserId) return
