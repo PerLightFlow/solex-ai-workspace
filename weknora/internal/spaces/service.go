@@ -70,6 +70,24 @@ type Access struct {
 	Sources  []Source `json:"sources"`
 }
 
+// addSource explains each space once even when ownership and a retained share
+// both grant access. Preserve their permission union and earliest history date.
+func (a *Access) addSource(source Source) {
+	for i := range a.Sources {
+		existing := &a.Sources[i]
+		if existing.SpaceID != source.SpaceID {
+			continue
+		}
+		existing.AllowEdit = existing.AllowEdit || source.AllowEdit
+		existing.AllowDownload = existing.AllowDownload || source.AllowDownload
+		if source.HistoryFrom.Before(existing.HistoryFrom) {
+			existing.HistoryFrom = source.HistoryFrom
+		}
+		return
+	}
+	a.Sources = append(a.Sources, source)
+}
+
 func (s *Service) actor(ctx context.Context) (*types.User, error) {
 	c := types.CallerFromContext(ctx)
 	if c.UserID == "" || c.TenantID == 0 {
@@ -130,7 +148,7 @@ func (s *Service) checkAccess(ctx context.Context, kind, id string, tenant uint6
 			if e := s.db.WithContext(ctx).First(&org, "id=?", owner.OwnerSpaceID).Error; e != nil {
 				return a, e
 			}
-			a.Sources = append(a.Sources, Source{SpaceID: owner.OwnerSpaceID, SpaceName: org.Name, Role: m.Role, AllowEdit: a.Edit, AllowDownload: true, HistoryFrom: owner.CreatedAt})
+			a.addSource(Source{SpaceID: owner.OwnerSpaceID, SpaceName: org.Name, Role: m.Role, AllowEdit: a.Edit, AllowDownload: true, HistoryFrom: owner.CreatedAt})
 		}
 	}
 	var rows []Source
@@ -150,7 +168,7 @@ func (s *Service) checkAccess(ctx context.Context, kind, id string, tenant uint6
 		row.AllowEdit = row.AllowEdit && RoleLevel(row.Role) >= 2 && !s.archived(ctx, s.db, row.SpaceID)
 		a.Edit = a.Edit || row.AllowEdit
 		a.Download = a.Download || row.AllowDownload
-		a.Sources = append(a.Sources, row)
+		a.addSource(row)
 	}
 	return a, nil
 }

@@ -25,7 +25,7 @@ APP_RUNTIME = 'wechatopenai/weknora-app@sha256:25b20959b7456f7842ef55ed4feff3694
 UI_RUNTIME = 'wechatopenai/weknora-ui@sha256:df26705d866997db07f3da78dabedc4f594b383566a3996810c166a5c6bee393'
 SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py', 'attribution_check.py', 'runtime_settings_check.py',
            'file_generation_setup.py', 'file_generation_check.py', 'compose.file-generation.yaml',
-           'docker_control.py', 'account_handover_check.py', 'invite_picker_check.py', 'migrate-user-spaces.py', 'rehearse-user-spaces.py', 'spaces_check.py', 'deploy-user-spaces.py')
+           'docker_control.py', 'account_handover_check.py', 'invite_picker_check.py', 'permission_sources_check.py', 'migrate-user-spaces.py', 'rehearse-user-spaces.py', 'spaces_check.py', 'deploy-user-spaces.py')
 EVIDENCE = ('go-build-info.txt', 'runtime-libraries.txt', 'WeKnora.sha256')
 
 
