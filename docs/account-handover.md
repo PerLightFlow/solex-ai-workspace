@@ -13,3 +13,16 @@
 验证：前端类型检查、生产构建及 10 项定向测试；后端空间、账号状态/列表及仓储测试；`deploy/solex-runtime/account_handover_check.py` 在隔离数据库中验证真实 API 流程，使用合成账号/知识库/智能体，不调用模型。
 
 后端完整 handler 测试中的 `TestPutTenantParserConfigAdminPreservesRedactedSecrets` 返回 400 而预期 200，已在未修改的生产源版本 `00f3bdfb5338` 复现；与本次交接接口无关。其余上述包测试单独排除此项后执行，发布证据另行记录。
+
+## 2026-11-06 发布结果
+
+- 应用与前端源码版本：`81119d140d4efab230b5f5b275cf51a2b54656e2`。
+- 应用镜像：`solex/solex-app:81119d140d4e`；前端镜像：`solex/solex-ui:managed-81119d140d4e`。
+- 生产入口：`http://192.168.85.199:8080`，系统用户管理路径 `/platform/settings?section=system-global&panel=users`。
+- PostgreSQL 仍为 schema 137、dirty=false；数据库、Redis、解析、向量和搜索的五个服务容器未更换。
+- 前端类型检查、生产构建和 10 项定向测试通过。后端 `internal/spaces`、`internal/handler`、`internal/application/repository` 包测试通过（仅排除上文已复现的原有解析配置失败项）。
+- 隔离真实 API 验收的 10 项检查通过：按账号预览、普通用户拒绝、停用撤销会话、部分交接恢复、过期所有者拒绝、目标仅限已有共享空间、知识库及智能体交接、保留其他共享授权、排除私有内容、保留普通成员交接。
+- 生产浏览器验证：首页入口消失；成员页保留转交所有权；已停用账号行显示交接；有效账号停用按钮打开预览，取消和 Escape 正常。仅查看现有业务账号预览，没有停用它们。
+- 隔离应用/前端/Redis 容器和隔离数据库已清理。未在生产创建本次验收账号或资料。
+- 服务器验收记录、配置备份和数据库快照：`/data/solexai/yongjun/build-cache/account-handover-state-81119d1`（受限权限）；运行目录内发布记录：`/data/solexai/yongjun/weknora-native/runtime-releases/solex-runtime-81119d140d4e`。
+- 本机 UI 截图：`/home/s5376/yongjun/work/proj/SLSelectChipAgent/work/acceptance/account-handover-20261106/disable-preview.png`。本机同结构发布脚本：`/home/s5376/yongjun/work/proj/SLSelectChipAgent/work/account-handover-ops.py`，仅针对该已验收版本，配置与凭据不进入 Git。
