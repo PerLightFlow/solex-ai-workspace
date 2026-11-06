@@ -26,3 +26,15 @@
 ## Git 与上游
 
 `origin` 继续指向 `PerLightFlow/solex-ai-workspace`；`weknora-upstream` 用于读取官方版本。原始源码基线提交记录确切上游 commit，后续定制均能与该基线比较。使用 [当前发布流程](../deploy/solex-runtime/README.md) 或 [独立 UI 发布](../deploy/solex-ui/README.md) 交付，不能直接修改运行中容器的文件。
+
+## 2026-11-06 账号菜单精简
+
+账号空间模式下，移除账号菜单里的固定“我的个人空间／所有者”区块。底部账号卡片展示用户名；系统管理员附带“系统管理员”标识，普通账号不展示个人空间角色。共享空间内的成员角色仍按实际权限显示。旧版租户模式继续使用原有切换和角色展示。
+
+- 源码提交：`a4cce8a02779af41d3a9a7eab77d341379616757`；改动仅在 `UserMenu.vue`。
+- `npm run type-check`、`npm run build` 通过。构建保留既有 bundle 体积提示。
+- 前端发布：`solex-ui-6402968b6a646f91`，已通过临时容器及正式入口的资源和登录代理检查。
+- 后端仍为 `4a403bda4aa86f4255da0425ed3116bc1b123861`；其余六个服务的容器、镜像、启动时间及重启次数未改变。
+- 线上使用现有管理员会话检查：账号菜单无个人空间区块，账号卡片显示系统管理员；“算法组”成员页仍显示所有者与编辑者。未切换或修改真实普通账号。
+- 发布记录：`/data/solexai/yongjun/weknora-native/ui-releases/solex-ui-6402968b6a646f91/acceptance.json`。
+- 浏览器截图：项目仓库上一级的 `work/acceptance/account-menu-20261106/account-menu.png`。
