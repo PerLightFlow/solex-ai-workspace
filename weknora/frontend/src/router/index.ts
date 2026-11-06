@@ -9,6 +9,7 @@ import type { DeploymentCapabilityKey } from '@/config/deploymentCapabilities'
 import { MessagePlugin } from 'tdesign-vue-next'
 import i18n from '@/i18n'
 import { normalizeSettingsSection } from '@/config/settingsRoute'
+import { SYSTEM_ADMIN_SETTINGS_SECTIONS } from '@/config/settingsAccess'
 import { isToolboxSection, toolboxLocation } from '@/config/toolbox'
 
 /** Lite /桌面 WebView 硬刷新时可能只打开 `/`，用 session 记住上次页面以便恢复 */
@@ -411,7 +412,7 @@ router.beforeEach(async (to, from, next) => {
   // out gets redirected to /login first (consistent with how the rest
   // of the auth flow works), and only an authenticated non-admin sees
   // the bounce. This is UI-only; the server enforces the real check.
-  if (to.meta.requiresSystemAdmin === true) {
+  if (to.meta.requiresSystemAdmin === true || SYSTEM_ADMIN_SETTINGS_SECTIONS.has(settingsSection)) {
     if (!authStore.isSystemAdmin) {
       next('/platform/knowledge-bases')
       return

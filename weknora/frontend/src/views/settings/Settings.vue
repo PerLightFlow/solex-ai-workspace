@@ -152,6 +152,10 @@
           <SystemSettings />
         </div>
 
+        <div v-if="currentSection === 'content-retention' && authStore.isSystemAdmin && deploymentCapabilities.userSpaces" class="section">
+          <SpaceRetentionSettings />
+        </div>
+
         <div v-if="currentSection === 'model-catalog'" class="section">
           <ModelCatalog />
         </div>
@@ -230,6 +234,7 @@ import StorageBackendSettings from './StorageBackendSettings.vue'
 import SandboxSettings from './SandboxSettings.vue'
 import TenantMembers from './TenantMembers.vue'
 import SystemSettings from '@/views/system/SystemSettings.vue'
+import SpaceRetentionSettings from '@/components/SpaceRetentionSettings.vue'
 import RuntimeQueues from '@/views/system/RuntimeQueues.vue'
 import PlatformAPIKeys from '@/views/system/PlatformAPIKeys.vue'
 import SystemAuditLog from '@/views/system/SystemAuditLog.vue'
@@ -322,6 +327,7 @@ const syncSettingsRoute = (sectionKey: string) => {
 }
 
 const isSectionSupported = (key: string): boolean => {
+  if (key === 'content-retention') return deploymentCapabilities.userSpaces
   // The upstream hosted-cloud product is not part of this deployment.
   if (key === 'weknoracloud') return false
   if (isIntegrationSection(key)) {
@@ -378,6 +384,7 @@ const navItems = computed(() => {
     { key: 'system', icon: 'info-circle', label: t('settings.versionInfo') },
     { key: 'help', icon: 'help-circle', label: locale.value.startsWith('zh') ? '使用帮助' : 'Help' },
     { key: 'system-global', icon: 'server', label: t('settings.system') },
+    { key: 'content-retention', icon: 'time', label: '内容保留策略' },
     { key: 'model-catalog', icon: 'control-platform', label: t('modelCatalog.title') },
     { key: 'runtime-queues', icon: 'queue', label: t('settings.taskQueue') },
     { key: 'platform-api-keys', icon: 'secured', label: t('platformApiKeys.title') },
@@ -441,7 +448,7 @@ const navGroups = computed<NavGroup[]>(() => {
     {
       key: 'system_administration',
       label: t('settings.navGroups.systemAdministration'),
-      items: pickItems(['system-global', 'model-catalog', 'runtime-queues', 'platform-api-keys', 'system-audit-log']),
+      items: pickItems(['system-global', 'content-retention', 'model-catalog', 'runtime-queues', 'platform-api-keys', 'system-audit-log']),
     },
     {
       key: 'platform',
@@ -510,7 +517,7 @@ const handleClose = () => {
   // Only go back when Vue Router knows the previous route is inside the app.
   if (route.path === '/platform/settings') {
     const sec = route.query.section
-    if (sec === 'model-catalog' || sec === 'system-global' || sec === 'runtime-queues' || sec === 'platform-api-keys' || sec === 'system-audit-log') {
+    if (typeof sec === 'string' && SYSTEM_ADMIN_SECTIONS.has(sec)) {
       router.push('/platform/knowledge-bases')
     } else {
       const back = router.options.history.state.back
