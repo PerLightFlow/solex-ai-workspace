@@ -9,7 +9,7 @@
         <span v-else class="avatar-placeholder">{{ userInitial }}</span>
       </div>
       <div v-if="!uiStore.sidebarCollapsed" class="user-info">
-          <!-- 多空间 / superuser：首行空间名，次行 username · 角色。单空间：昵称 + 角色。 -->
+          <!-- 账号空间模式展示账号身份；旧版多租户模式仍展示当前租户与角色。 -->
           <template v-if="showTenantIdentityLine">
             <div class="user-tenant-name" :title="activeTenantName">{{ activeTenantName }}</div>
             <div class="user-tenant-meta">
@@ -22,7 +22,7 @@
           </template>
           <template v-else>
             <div class="user-name">{{ userName }}</div>
-            <div class="user-email">{{ currentRoleLabel || t('solex.account') }}</div>
+            <div v-if="accountSubtitle" class="user-email">{{ accountSubtitle }}</div>
           </template>
         </div>
         <t-icon v-if="!uiStore.sidebarCollapsed" name="chevron-up" class="user-menu-chevron"
@@ -52,7 +52,7 @@
     <!-- 下拉菜单 -->
     <Transition name="dropdown">
       <div v-if="menuVisible" class="user-dropdown" @click.stop>
-        <!-- 弹出菜单：账号（头像+昵称）／当前空间（名称+权限）；底部侧栏样式不改。 -->
+        <!-- 账号信息；只有旧版多租户模式需要显示当前空间。 -->
         <div v-if="userName" class="dropdown-user-header is-clickable" role="button" tabindex="0"
           @click="handleQuickNav('userprofile')" @keydown.enter.prevent="handleQuickNav('userprofile')"
           @keydown.space.prevent="handleQuickNav('userprofile')">
@@ -74,7 +74,7 @@
           </div>
         </div>
 
-        <div v-if="userName && !authStore.isLiteMode" ref="tenantMenuItemRef" class="dropdown-tenant-panel" :class="{
+        <div v-if="userName && !authStore.isLiteMode && !spaceCapabilities.userSpaces" ref="tenantMenuItemRef" class="dropdown-tenant-panel" :class="{
           'is-open': tenantSubmenuOpen,
           'is-clickable': showTenantSwitcher,
         }" @mouseenter="showTenantSwitcher && showTenantSubmenu()"
@@ -94,7 +94,7 @@
             :title="$t('tenant.switcher.menuLabel')" />
         </div>
         <div class="menu-divider"></div>
-        <!-- 账号与空间是头像菜单的核心上下文；基础设施类配置统一收进「全部设置」。 -->
+        <!-- 账号设置快捷入口；基础设施类配置统一收进「全部设置」。 -->
         <div class="menu-item" @click="handleQuickNav('general')">
           <t-icon name="user" class="menu-icon" />
           <span>{{ $t('general.personalSettings') }}</span>
@@ -233,11 +233,8 @@ const authStore = useAuthStore()
 const { formatRole, roleIcon } = useRoleLabel()
 const { homeTenantId, isHomeTenantActive, isHomeTenant } = useHomeTenant()
 
-// 顶部用户卡片展示的空间名 / 当前角色：跟着 tenant 切换器实时变。
-// activeTenantName 优先用切换器选中的名字（含 fallback 到 home tenant 名字），
-// 单空间用户也能正常显示自己的 home tenant 名。
+// 仅供旧版租户切换界面使用；账号空间模式不重复显示固定的个人空间。
 const activeTenantName = computed(() => {
-  if (spaceCapabilities.userSpaces) return "我的个人空间"
   return (
     authStore.selectedTenantName ||
     authStore.tenant?.name ||
@@ -246,12 +243,18 @@ const activeTenantName = computed(() => {
 })
 const currentRoleLabel = computed(() => formatRole(authStore.currentTenantRole))
 const currentRoleIcon = computed(() => roleIcon(authStore.currentTenantRole))
+const accountSubtitle = computed(() => {
+  if (spaceCapabilities.userSpaces) {
+    return authStore.isSystemAdmin ? t('system.globalSettings.userList.roleAdmin') : ''
+  }
+  return currentRoleLabel.value || t('solex.account')
+})
 
 // 单空间用户（memberships <= 1 且非 superuser）= 永远 home + owner，第三
 // 行就是 user-email 信息的重复，没必要占视觉空间；只对多空间 / superuser
 // 渲染。Lite 模式下没有 RBAC 概念，统一隐藏。
 const showTenantIdentityLine = computed(() => {
-  if (authStore.isLiteMode) return false
+  if (authStore.isLiteMode || spaceCapabilities.userSpaces) return false
   if (authStore.canAccessAllTenants) return true
   return (authStore.memberships ?? []).length > 1
 })
