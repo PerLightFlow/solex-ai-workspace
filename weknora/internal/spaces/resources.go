@@ -27,7 +27,10 @@ func (s *Service) resourceName(ctx context.Context, kind, id string, tenant uint
 	case "knowledge_base":
 		var kb types.KnowledgeBase
 		if e := s.db.WithContext(ctx).First(&kb, "id=? AND tenant_id=?", id, tenant).Error; e != nil {
-			return "", ErrNotFound
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				return "", ErrNotFound
+			}
+			return "", e
 		}
 		return kb.Name, nil
 	case "agent":
@@ -36,7 +39,10 @@ func (s *Service) resourceName(ctx context.Context, kind, id string, tenant uint
 			return "", ErrInvalid
 		}
 		if e := s.db.WithContext(ctx).First(&a, "id=? AND tenant_id=?", id, tenant).Error; e != nil {
-			return "", ErrNotFound
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				return "", ErrNotFound
+			}
+			return "", e
 		}
 		return a.Name, nil
 	default:

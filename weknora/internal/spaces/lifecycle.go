@@ -63,10 +63,10 @@ func (s *Service) OrphanedSpaces(ctx context.Context) ([]HandoverSpace, error) {
 		return nil, ErrForbidden
 	}
 	rows := []HandoverSpace{}
-	e = s.db.WithContext(ctx).Table("organizations o").Select("o.id,o.name,o.owner_id,u.username AS owner_name").Joins("JOIN users u ON u.id=o.owner_id").Where("o.deleted_at IS NULL AND (NOT u.is_active OR u.deleted_at IS NOT NULL)").Scan(&rows).Error
+	e = s.handoverSpacesQuery(ctx, "", true).Scan(&rows).Error
 	return rows, e
 }
-func (s *Service) AdminHandover(ctx context.Context, id, target string) error {
+func (s *Service) AdminHandover(ctx context.Context, id, target string, expectedOwner ...string) error {
 	u, e := s.actor(ctx)
 	if e != nil || !u.IsSystemAdmin {
 		return ErrForbidden
@@ -76,8 +76,11 @@ func (s *Service) AdminHandover(ctx context.Context, id, target string) error {
 		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&org, "id=?", id).Error; e != nil {
 			return ErrNotFound
 		}
+		if len(expectedOwner) > 0 && expectedOwner[0] != "" && org.OwnerID != expectedOwner[0] {
+			return fmt.Errorf("%w: 空间所有者已变化，请刷新交接清单", ErrConflict)
+		}
 		var old types.User
-		if e := tx.Unscoped().First(&old, "id=?", org.OwnerID).Error; e != nil {
+		if e := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).First(&old, "id=?", org.OwnerID).Error; e != nil {
 			return e
 		}
 		if old.IsActive && !old.DeletedAt.Valid {
@@ -162,6 +165,7 @@ type SharedHandover struct {
 	SpaceID        string `json:"space_id"`
 	SpaceName      string `json:"space_name"`
 	OwnerName      string `json:"owner_name"`
+	OwnerUserID    string `json:"owner_user_id"`
 	Name           string `json:"name"`
 }
 
@@ -170,21 +174,10 @@ func (s *Service) OrphanedSharedResources(ctx context.Context) ([]SharedHandover
 	if e != nil || !u.IsSystemAdmin {
 		return nil, ErrForbidden
 	}
-	rows := []SharedHandover{}
-	e = s.db.WithContext(ctx).Table("solex_space_resources r").Select("r.kind,r.resource_id,r.source_tenant_id,g.space_id,o.name AS space_name,u.username AS owner_name").Joins("JOIN users u ON u.id=r.owner_user_id AND (NOT u.is_active OR u.deleted_at IS NOT NULL)").Joins("JOIN solex_space_grants g ON g.kind=r.kind AND g.resource_id=r.resource_id AND g.source_tenant_id=r.source_tenant_id").Joins("JOIN organizations o ON o.id=g.space_id AND o.deleted_at IS NULL").Scan(&rows).Error
-	if e != nil {
-		return nil, e
-	}
-	result := []SharedHandover{}
-	for _, r := range rows {
-		if name, e := s.resourceName(ctx, r.Kind, r.ResourceID, r.SourceTenantID); e == nil {
-			r.Name = name
-			result = append(result, r)
-		}
-	}
-	return result, nil
+	return s.sharedHandovers(ctx, "", true)
 }
-func (s *Service) AdminResourceHandover(ctx context.Context, kind, id string, tenant uint64, target string) error {
+
+func (s *Service) AdminResourceHandover(ctx context.Context, kind, id string, tenant uint64, target string, expectedOwner ...string) error {
 	u, e := s.actor(ctx)
 	if e != nil || !u.IsSystemAdmin {
 		return ErrForbidden
@@ -197,11 +190,14 @@ func (s *Service) AdminResourceHandover(ctx context.Context, kind, id string, te
 		if e := tx.First(&r, "kind=? AND resource_id=? AND source_tenant_id=?", kind, id, tenant).Error; e != nil {
 			return ErrNotFound
 		}
+		if len(expectedOwner) > 0 && expectedOwner[0] != "" && r.OwnerUserID != expectedOwner[0] {
+			return fmt.Errorf("%w: 原件所有者已变化，请刷新交接清单", ErrConflict)
+		}
 		var owner types.User
 		if r.OwnerUserID == "" {
 			return ErrInvalid
 		}
-		if e := tx.Unscoped().First(&owner, "id=?", r.OwnerUserID).Error; e != nil {
+		if e := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).First(&owner, "id=?", r.OwnerUserID).Error; e != nil {
 			return ErrNotFound
 		}
 		if owner.IsActive && !owner.DeletedAt.Valid {

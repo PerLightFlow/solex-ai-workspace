@@ -25,7 +25,7 @@ APP_RUNTIME = 'wechatopenai/weknora-app@sha256:25b20959b7456f7842ef55ed4feff3694
 UI_RUNTIME = 'wechatopenai/weknora-ui@sha256:df26705d866997db07f3da78dabedc4f594b383566a3996810c166a5c6bee393'
 SCRIPTS = ('apply.sh', 'deploy.py', 'api_client.py', 'acceptance.py', 'stream_check.py', 'attribution_check.py', 'runtime_settings_check.py',
            'file_generation_setup.py', 'file_generation_check.py', 'compose.file-generation.yaml',
-           'docker_control.py', 'migrate-user-spaces.py', 'rehearse-user-spaces.py', 'spaces_check.py', 'deploy-user-spaces.py')
+           'docker_control.py', 'account_handover_check.py', 'migrate-user-spaces.py', 'rehearse-user-spaces.py', 'spaces_check.py', 'deploy-user-spaces.py')
 EVIDENCE = ('go-build-info.txt', 'runtime-libraries.txt', 'WeKnora.sha256')
 
 
@@ -123,7 +123,9 @@ def validate_dist(directory):
     return digest.hexdigest()
 
 
-def prepare(backend_dir, dist, destination, revision):
+def prepare(backend_dir, dist, destination, revision, schema_before=136):
+    if schema_before not in (136, 137):
+        raise ValueError("Only the 136-to-137 migration or a schema-137 update can be packaged")
     if not re.fullmatch(r'[a-f0-9]{40}', revision):
         raise ValueError('Use the full 40-character source commit')
     backend_dir, dist = Path(backend_dir).absolute(), Path(dist).absolute()
@@ -166,7 +168,7 @@ def prepare(backend_dir, dist, destination, revision):
         'build_tags': ['anydoc'],
         # Permission migration is not compatible with the legacy authorization code.
         'authorization_model': 'account_spaces_v1',
-        'postgres_schema_before': 136,
+        'postgres_schema_before': schema_before,
         'postgres_schema_after': 137,
     }
     destination.mkdir(mode=0o700)
@@ -210,8 +212,9 @@ def main():
     parser.add_argument('--dist', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--source-revision', required=True)
+    parser.add_argument('--schema-before', type=int, choices=(136, 137), default=136)
     args = parser.parse_args()
-    metadata = prepare(args.backend_dir, args.dist, args.output, args.source_revision)
+    metadata = prepare(args.backend_dir, args.dist, args.output, args.source_revision, args.schema_before)
     print(json.dumps({'release_id': metadata['release_id'], 'directory': str(Path(args.output).absolute()),
                       'backend_sha256': metadata['backend_sha256'], 'dist_sha256': metadata['dist_sha256']}, indent=2))
 

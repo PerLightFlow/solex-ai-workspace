@@ -4,7 +4,7 @@
       <div v-show="active">
         <CreateUserDialog v-model:visible="createVisible" :active="active" @created="fetchPage(0)" @announced="announce">
           <t-button variant="text" size="small" class="user-management__create"
-            :disabled="loading || busyId !== null || resetVisibleId !== null">
+            :disabled="loading || locked">
             <template #icon><t-icon name="add" size="16px" /></template>
             {{ t('system.globalSettings.createUser.action') }}
           </t-button>
@@ -69,12 +69,14 @@
                 @update:visible="value => { resetVisibleId = value ? row.id : null }"
                 @busy-change="resetBusy = $event" @announced="announce">
                 <t-button variant="text" class="user-management__action"
-                  :disabled="loading || busyId !== null || resetBusy || (resetVisibleId !== null && resetVisibleId !== row.id) || createVisible || row.id === authStore.currentUserId || !row.is_active"
+                  :disabled="loading || busyId !== null || resetBusy || (resetVisibleId !== null && resetVisibleId !== row.id) || createVisible || handoverUser !== null || row.id === authStore.currentUserId || !row.is_active"
                   :title="t('system.globalSettings.userList.resetPassword')" :aria-label="t('system.globalSettings.userList.resetPassword')">
                   {{ t('system.globalSettings.userList.resetPassword') }}
                 </t-button>
               </ResetPasswordDialog>
-              <t-popconfirm :visible="active && statusVisibleId === row.id" placement="left" theme="warning"
+              <t-button v-if="deploymentCapabilities.userSpaces && row.is_active" variant="text" class="user-management__action"
+                :disabled="loading || locked || row.id === authStore.currentUserId" @click="openHandover(row)">停用</t-button>
+              <t-popconfirm v-else :visible="active && statusVisibleId === row.id" placement="left" theme="warning"
                 :popup-props="{ overlayClassName: 'wk-popover user-management-confirm-popup' }"
                 :content="t(row.is_active ? 'system.globalSettings.userList.confirmDisable' : 'system.globalSettings.userList.confirmEnable', { name: row.username })"
                 :confirm-btn="{ content: t(row.is_active ? 'system.globalSettings.userList.disable' : 'system.globalSettings.userList.enable'), theme: row.is_active ? 'danger' : 'primary', loading: busyId === row.id }"
@@ -87,6 +89,8 @@
                   {{ t(row.is_active ? 'system.globalSettings.userList.disable' : 'system.globalSettings.userList.enable') }}
                 </t-button>
               </t-popconfirm>
+              <t-button v-if="deploymentCapabilities.userSpaces && !row.is_active" variant="text" class="user-management__action"
+                :disabled="loading || locked" @click="openHandover(row)">交接</t-button>
             </div>
           </template>
         </t-table>
@@ -104,6 +108,8 @@
         </t-button>
       </div>
     </div>
+    <AccountHandoverDialog v-if="handoverUser" :key="handoverUser.id" :user="handoverUser"
+      @close="handoverUser = null" @status-changed="updateHandoverStatus" @announced="announce" />
   </section>
 </template>
 
@@ -115,11 +121,15 @@ import { listAllUsers, setUserStatus, promoteUserToSystemAdmin, revokeSystemAdmi
 import { useAuthStore } from '@/stores/auth'
 import CreateUserDialog from './CreateUserDialog.vue'
 import ResetPasswordDialog from './ResetPasswordDialog.vue'
+import AccountHandoverDialog from './AccountHandoverDialog.vue'
+import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 
 const props = defineProps<{ active: boolean }>()
 const emit = defineEmits<{ announced: [string] }>()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
+const deploymentCapabilities = useDeploymentCapabilitiesStore()
+const handoverUser = ref<SystemAdminUser | null>(null)
 const users = ref<SystemAdminUser[]>([])
 const loading = ref(false)
 const loadError = ref('')
@@ -133,7 +143,7 @@ const statusVisibleId = ref<string | null>(null)
 const resetVisibleId = ref<string | null>(null)
 const resetBusy = ref(false)
 const createVisible = ref(false)
-const locked = computed(() => busyId.value !== null || resetVisibleId.value !== null || createVisible.value)
+const locked = computed(() => busyId.value !== null || resetVisibleId.value !== null || createVisible.value || handoverUser.value !== null)
 const roleOptions = computed(() => [
   { value: 'user', label: t('system.globalSettings.userList.roleUser') },
   { value: 'admin', label: t('system.globalSettings.userList.roleAdmin') },
@@ -143,7 +153,7 @@ const columns = computed(() => [
   { colKey: 'role', title: t('system.globalSettings.userList.colRole'), width: 160 },
   { colKey: 'status', title: t('system.globalSettings.userList.colStatus'), width: 100 },
   { colKey: 'created', title: t('system.globalSettings.userList.colCreated'), width: 130 },
-  { colKey: 'actions', title: t('system.globalSettings.userList.colAction'), width: 170 },
+  { colKey: 'actions', title: t('system.globalSettings.userList.colAction'), width: deploymentCapabilities.userSpaces ? 220 : 170 },
 ])
 const filteredUsers = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -171,6 +181,14 @@ async function fetchPage(nextOffset: number) {
   } catch (error) {
     loadError.value = errorMessage(error, 'system.globalSettings.userList.loadFailed')
   } finally { loading.value = false }
+}
+function openHandover(row: SystemAdminUser) {
+  if (locked.value || row.id === authStore.currentUserId) return
+  pendingRole.value = null; statusVisibleId.value = null
+  handoverUser.value = row
+}
+function updateHandoverStatus(isActive: boolean) {
+  if (handoverUser.value) handoverUser.value.is_active = isActive
 }
 async function changeStatus(row: SystemAdminUser) {
   if (busyId.value || row.id === authStore.currentUserId) return
