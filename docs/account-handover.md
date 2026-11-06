@@ -26,3 +26,9 @@
 - 隔离应用/前端/Redis 容器和隔离数据库已清理。未在生产创建本次验收账号或资料。
 - 服务器验收记录、配置备份和数据库快照：`/data/solexai/yongjun/build-cache/account-handover-state-81119d1`（受限权限）；运行目录内发布记录：`/data/solexai/yongjun/weknora-native/runtime-releases/solex-runtime-81119d140d4e`。
 - 本机 UI 截图：`/home/s5376/yongjun/work/proj/SLSelectChipAgent/work/acceptance/account-handover-20261106/disable-preview.png`。本机同结构发布脚本：`/home/s5376/yongjun/work/proj/SLSelectChipAgent/work/account-handover-ops.py`，仅针对该已验收版本，配置与凭据不进入 Git。
+
+### 同日界面修正：隐藏空交接入口
+
+前端源码 `41301e358a512a114f2ada86afa256a5aab68600` 已发布为 `solex/solex-ui:2fcfef6624a5b186`。前端类型检查与生产构建通过；发布前后其他六个服务容器保持不变。只读查询确认当前 24 个停用账号均无待交接内容，生产浏览器已验证两页用户列表的交接按钮全部隐藏，包括用户批注所指账号。未修改账号状态、资料或共享关系。完成交接后，弹窗读取到的新清单同步回用户列表，按钮随待办清空而隐藏。
+
+发布记录：`/data/solexai/yongjun/build-cache/handover-button-ui-41301e3-state/acceptance.json`。页面截图：`/home/s5376/yongjun/work/proj/SLSelectChipAgent/work/acceptance/handover-button-20261106/users.png`。
