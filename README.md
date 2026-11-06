@@ -54,6 +54,8 @@ python3 -m unittest discover -s deploy/solex-ui -p 'test_*.py'
 
 现有入口为 `http://192.168.85.199:8080`，需从能访问该内网的设备打开。服务与数据位于 `/data/solexai/yongjun/weknora-native`；当前共享空间发布包位于 `/data/solexai/yongjun/build-cache/user-spaces-candidate-00f3bdfb5338`，受保护发布回执保存在服务目录下的 `runtime-releases/`。
 
-2026-11-05 已部署共享空间版本，运行中的 app 与 frontend 对应源码提交 `00f3bdfb5338b49aae32424b438358a10056045b`。PostgreSQL schema 为 137、`dirty=false`，应用无迁移错误；原有 6 组账号与资源的读、编辑、下载权限比较一致。14 组隔离 API 验收、真实模型检索、Wiki 和 Excel 生成通过，正式入口及普通新账号权限已核对。后续版本以实际容器的 `org.opencontainers.image.revision` 和发布回执为准。
+2026-11-05 已部署共享空间版本，app 对应源码提交 `00f3bdfb5338b49aae32424b438358a10056045b`。PostgreSQL schema 为 137、`dirty=false`，应用无迁移错误；原有 6 组账号与资源的读、编辑、下载权限比较一致。14 组隔离 API 验收、真实模型检索、Wiki 和 Excel 生成通过，正式入口及普通新账号权限已核对。
+
+2026-11-06 前端更新到 `fbce20613b8da3d4e22fbf8ea2a948866751f43b`，将全局内容保留策略移入“系统管理”；六个后端容器保持不变。正式浏览器入口、普通账号修改被拒绝及原策略值保留均已核验。发布回执保存在服务目录的 `ui-releases/solex-ui-bee405135ff17381/`。后续版本以实际容器的 `org.opencontainers.image.revision` 和发布回执为准。
 
 维护既有实例请使用 [基础设施说明](deploy/solex-infra/README.md) 与 [完整发布流程](deploy/solex-runtime/README.md)。数据库、上传文档、模型文件、密钥、运行日志和发布产物不进入 Git。完整源码与单元测试通过不等于 50 人并发或万份文档容量验收。
