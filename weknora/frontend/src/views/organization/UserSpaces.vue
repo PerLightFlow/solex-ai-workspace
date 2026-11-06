@@ -9,6 +9,7 @@ import { get, post, put, del } from '@/utils/request'
 import * as api from '@/api/spaces'
 import AgentEditorModal from '@/views/agent/AgentEditorModal.vue'
 import KnowledgeBaseEditorModal from '@/views/knowledge/KnowledgeBaseEditorModal.vue'
+import SpaceInviteDialog from './SpaceInviteDialog.vue'
 import type { CustomAgent } from '@/api/agent'
 const kbCreateVisible = ref(false), agentEditorVisible = ref(false)
 const editingAgent = ref<CustomAgent | null>(null)
@@ -21,7 +22,7 @@ const spaces = ref<api.Space[]>([]), selected = ref<api.Space | null>(null)
 const members = ref<api.Member[]>([]), resources = ref<api.Resource[]>([]), events = ref<api.Event[]>([])
 const invitations = ref<api.Invitation[]>([]), busy = ref(false), error = ref('')
 const tab = ref('resources'), createVisible = ref(false), shareVisible = ref(false), inviteVisible = ref(false)
-const name = ref(''), description = ref(''), email = ref(''), candidates = ref<api.Resource[]>([]), choice = ref('')
+const name = ref(''), description = ref(''), candidates = ref<api.Resource[]>([]), choice = ref('')
 const allowEdit = ref(false), allowDownload = ref(false)
 const manage = computed(() => selected.value && api.roleLevel[selected.value.my_role] >= 3)
 const publish = computed(() => selected.value && !selected.value.archived && api.roleLevel[selected.value.my_role] >= 2)
@@ -55,10 +56,6 @@ function confirm(message: string, fn: () => Promise<unknown>) {
 }
 async function create() {
   await api.createSpace(name.value.trim(), description.value.trim()); createVisible.value = false; name.value = ''; description.value = ''; await refresh()
-}
-async function invite() {
-  if (!selected.value) return
-  await api.inviteMember(selected.value.id, email.value.trim()); inviteVisible.value = false; email.value = ''; MessagePlugin.success('已创建定向邀请，对方登录后可接受')
 }
 async function openShare() {
   const [kb, agents] = await Promise.all([get('/api/v1/knowledge-bases'), get('/api/v1/agents')])
@@ -101,7 +98,7 @@ onMounted(() => run(refresh))
       <section v-if="tab === 'settings'" class="settings"><h2>空间管理</h2><p>新邀请默认以使用者身份加入；个人资源的修改和下载能力由资源所有者授权。</p><p>空间所有者退出前须转交管理权；解散前须处理空间自有资源。</p><t-button v-if="selected.my_role === 'owner'" variant="outline" @click="confirm(selected.archived ? '恢复后成员可按原权限修改资料。' : '归档后保留阅读，停止新增和修改协作内容。', async () => { await put(`/api/v1/spaces/${selected!.id}/archive`, { archived: !selected!.archived }); await refresh() })">{{ selected.archived ? '恢复空间' : '归档空间' }}</t-button><t-button v-if="selected.my_role === 'owner'" theme="danger" variant="outline" @click="confirm('解散空间将解除共享关系，但不会删除个人原件。', async () => { await api.deleteSpace(selected!.id); selected = null; await refresh() })">解散共享空间</t-button></section>
     </template>
     <t-dialog v-model:visible="createVisible" header="创建共享空间" :confirm-btn="{ content: '创建', disabled: !name.trim(), loading: busy }" @confirm="run(create)"><label>名称<t-input v-model="name" :maxlength="100" /></label><label>说明<t-textarea v-model="description" :maxlength="2000" /></label><p>创建后你是空间所有者，邀请的成员默认是使用者。</p></t-dialog>
-    <t-dialog v-model:visible="inviteVisible" header="邀请用户" :confirm-btn="{ content: '创建邀请', disabled: !email.includes('@'), loading: busy }" @confirm="run(invite)"><label>对方账号邮箱<t-input v-model="email" type="email" /></label><p>仅该邮箱对应的账号可接受，七天有效。对方登录后会在共享空间看到待接受邀请。</p></t-dialog>
+    <SpaceInviteDialog v-if="selected" v-model:visible="inviteVisible" :space-id="selected.id" :space-name="selected.name" @invited="run(refresh)" />
     <t-dialog v-model:visible="shareVisible" header="共享我的资源" :confirm-btn="{ content: '确认共享', disabled: !resource, loading: busy }" @confirm="run(share)"><label>选择资源<select v-model="choice"><option value="" disabled>请选择</option><option v-for="r in candidates" :key="`${r.kind}:${r.id}`" :value="`${r.kind}:${r.id}`">{{ r.kind === 'agent' ? '智能体' : '知识库' }} · {{ r.name }}</option></select></label><label class="check"><input v-model="allowEdit" type="checkbox" />{{ resource?.kind === 'agent' ? '允许修改智能体配置' : '允许修改原件' }}</label><p v-if="allowEdit" class="notice">编辑者及以上成员的修改将影响原件，以及使用它的其他共享空间；{{ resource?.kind === 'knowledge_base' ? '文档修改会保留人员、时间与版本记录。' : '保存前请核对提示词及知识库范围。' }}</p><label v-if="resource?.kind === 'knowledge_base'" class="check"><input v-model="allowDownload" type="checkbox" />允许下载原文件</label><p v-if="resource?.kind === 'agent'">智能体必须明确选择知识库；所选知识库须先向此空间授权，不会自动共享你的全部个人资料。</p></t-dialog>
     <KnowledgeBaseEditorModal :visible="kbCreateVisible" mode="create" :owner-space-id="selected?.id" @update:visible="kbCreateVisible = $event" @success="run(refresh)" />
     <AgentEditorModal :visible="agentEditorVisible" :mode="editingAgent ? 'edit' : 'create'" :agent="editingAgent" :owner-space-id="editingAgent ? undefined : selected?.id" @update:visible="agentEditorVisible = $event" @success="run(refresh)" />

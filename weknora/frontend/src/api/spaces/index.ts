@@ -12,6 +12,8 @@ export interface Resource {
   grant?: { allow_edit: boolean; allow_download: boolean }
 }
 export interface Invitation { email?: string; space_name?: string; id: string; space_id: string; expires_at: string }
+export interface InviteCandidate { id: string; username: string; email: string }
+export interface InviteCandidatePage { items: InviteCandidate[]; has_more: boolean }
 export interface Event { id: number; actor_id: string; action: string; subject: string; created_at: string }
 type Response<T> = { success: boolean; data: T; message?: string }
 const base = '/api/v1/spaces'
@@ -23,7 +25,8 @@ export const listResources = (id: string) => get<Response<Resource[]>>(`${base}/
 export const listEvents = (id: string) => get<Response<Event[]>>(`${base}/${segment(id)}/events`).then(r => r.data)
 export const listInvitations = () => get<Response<Invitation[]>>(`${base}/invitations`).then(r => r.data)
 export const acceptInvitation = (id: string) => post(`${base}/invitations/${segment(id)}/accept`)
-export const inviteMember = (id: string, email: string) => post(`${base}/${segment(id)}/invitations`, { email })
+export const listInviteCandidates = (id: string, q = '', offset = 0, limit = 20) => get<Response<InviteCandidatePage>>(`${base}/${segment(id)}/invite-candidates`, { params: { q, offset, limit } }).then(r => r.data)
+export const inviteMember = (id: string, user_id: string) => post(`${base}/${segment(id)}/invitations`, { user_id })
 export const changeRole = (id: string, user: string, role: SpaceRole) => put(`${base}/${segment(id)}/members/${segment(user)}`, { role })
 export const removeMember = (id: string, user: string) => del(`${base}/${segment(id)}/members/${segment(user)}`)
 export const transferSpace = (id: string, user_id: string) => post(`${base}/${segment(id)}/transfer`, { user_id })

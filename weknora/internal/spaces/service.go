@@ -226,12 +226,25 @@ func (s *Service) Members(ctx context.Context, space string) ([]Member, error) {
 }
 
 func (s *Service) Invite(ctx context.Context, space, email string) (*types.SpaceInvitation, error) {
+	return s.invite(ctx, space, email, "")
+}
+
+// InviteUser revalidates a selected account when sending; list results may have
+// become stale because the account was disabled, joined, or invited elsewhere.
+func (s *Service) InviteUser(ctx context.Context, space, userID string) (*types.SpaceInvitation, error) {
+	if strings.TrimSpace(userID) == "" || len(userID) > 64 {
+		return nil, ErrInvalid
+	}
+	return s.invite(ctx, space, "", userID)
+}
+
+func (s *Service) invite(ctx context.Context, space, email, userID string) (*types.SpaceInvitation, error) {
 	u, e := s.actor(ctx)
 	if e != nil {
 		return nil, e
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
-	if len(email) > 255 || !strings.Contains(email, "@") {
+	if userID == "" && (len(email) > 255 || !strings.Contains(email, "@")) {
 		return nil, ErrInvalid
 	}
 	now := time.Now().UTC()
@@ -240,11 +253,43 @@ func (s *Service) Invite(ctx context.Context, space, email string) (*types.Space
 		if _, err := s.member(ctx, tx, space, u.ID, 3); err != nil {
 			return err
 		}
+		// Serialize sends with each other and invitation acceptance in this space.
+		var org types.Organization
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&org, "id=?", space).Error; err != nil {
+			return ErrNotFound
+		}
 		if e := s.requireWritableSpace(ctx, tx, space); e != nil {
 			return e
 		}
+		if userID != "" {
+			var target types.User
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Where("id=? AND is_active=?", userID, true).First(&target).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return fmt.Errorf("%w: 该账号已停用或不存在，请刷新用户列表", ErrConflict)
+				}
+				return err
+			}
+			email = strings.ToLower(strings.TrimSpace(target.Email))
+			if len(email) > 255 || !strings.Contains(email, "@") {
+				return ErrInvalid
+			}
+			var count int64
+			if err := tx.Model(&types.SpaceMember{}).Where("space_id=? AND user_id=?", space, userID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != 0 {
+				return fmt.Errorf("%w: 该用户已加入空间", ErrConflict)
+			}
+			if err := tx.Model(&types.SpaceInvitation{}).Where("space_id=? AND LOWER(email)=? AND status=? AND expires_at>?", space, email, "pending", time.Now().UTC()).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != 0 {
+				return fmt.Errorf("%w: 该用户已有待接受邀请", ErrConflict)
+			}
+			i.Email = email
+		}
 		// Supersede an earlier invitation; it cannot be accepted twice.
-		if err := tx.Model(&types.SpaceInvitation{}).Where("space_id=? AND email=? AND status=?", space, email, "pending").Update("status", "revoked").Error; err != nil {
+		if err := tx.Model(&types.SpaceInvitation{}).Where("space_id=? AND LOWER(email)=? AND status=?", space, email, "pending").Update("status", "revoked").Error; err != nil {
 			return err
 		}
 		if err := tx.Create(i).Error; err != nil {

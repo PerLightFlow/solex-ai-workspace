@@ -153,13 +153,29 @@ func (h *UserSpaceHandler) Register(r *gin.RouterGroup) {
 	})
 	g.POST("/:space/invitations", func(c *gin.Context) {
 		var q struct {
-			Email string `json:"email"`
+			Email  string `json:"email"`
+			UserID string `json:"user_id"`
 		}
-		if c.ShouldBindJSON(&q) != nil {
+		if c.ShouldBindJSON(&q) != nil || (q.Email != "" && q.UserID != "") {
 			spaceResponse(c, nil, spaces.ErrInvalid)
 			return
 		}
+		if q.UserID != "" {
+			v, e := h.service.InviteUser(c.Request.Context(), c.Param("space"), q.UserID)
+			spaceResponse(c, v, e)
+			return
+		}
 		v, e := h.service.Invite(c.Request.Context(), c.Param("space"), q.Email)
+		spaceResponse(c, v, e)
+	})
+	g.GET("/:space/invite-candidates", func(c *gin.Context) {
+		offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
+		limit, limitErr := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		if offsetErr != nil || limitErr != nil {
+			spaceResponse(c, nil, spaces.ErrInvalid)
+			return
+		}
+		v, e := h.service.InviteCandidates(c.Request.Context(), c.Param("space"), c.Query("q"), offset, limit)
 		spaceResponse(c, v, e)
 	})
 	g.PUT("/:space/members/:user", func(c *gin.Context) {
